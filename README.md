@@ -6,4 +6,6 @@
 
 <img src="https://i.imgur.com/YjINdCb.jpg" />
 
+*** Watch it in action ***
+
 [![demo](https://img.youtube.com/vi/ucP3iEoqw-0/0.jpg)](https://www.youtube.com/watch?v=ucP3iEoqw-0)
