@@ -27,15 +27,25 @@ class Flashist #don't punch me bro@cava
   end
   
   def init_device
-    @dev = HIDAPI::open(0x16c0, 0x0486)
-    @dev.kill_read_thread
+    begin
+      @dev = HIDAPI::open(0x16c0, 0x0486)
+    rescue Exception => e
+      puts "device not found"
+    end
+    if @dev
+      @dev.kill_read_thread
+      #puts "device connected"
+    end
   end
   
   def send_raw(*args)
+    init_device unless @dev
     begin
-      @dev.write(*args)
-    rescue LIBUSB::ERROR_IO
-      puts "OH NO BAD THING"
+      @dev.write(*args) if @dev
+    rescue Exception => e
+      puts "device write failed"
+      @dev.close
+      @dev = nil
     end
   end
   
