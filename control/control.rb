@@ -135,22 +135,71 @@ end
 
 class CavaReader
   include Celluloid
-  attr_accessor :s2rgb, :keep_running
+  attr_accessor :s2rgb, :keep_running, :fifo
+  
+  class BlockingReadline
+    include Celluloid
+    def initialize(parent)
+      @parent = parent
+    end
+    
+    def run
+      while true do
+        l = @parent.fifo.readline
+        @parent.receive_line l
+      end
+    end
+  end
+  
+  def receive_line(l)
+    bars = l.strip.split " "
+    bars.map! &:to_i
+    if !@active then
+      @active = true
+      @on_active.call if @on_active
+    end
+    @framecount += 1
+    @flashy.send_rgb @s2rgb.spectral_center_of_mass(bars)
+  end
+  
   def initialize(path, s2rgb, flashy)
     @s2rgb = s2rgb
     @flashy = flashy
     @keep_running = true
     @fifo_path = path
     open_fifo
+    @active = false
+    @framecount = 0
+    @reader = BlockingReadline.new(self)
   end
-
+  
+  def on_active &block
+    @on_active = block
+  end
+  
+  def on_idle &block
+    @on_idle = block
+  end
+  
   def spawn_cava
     @cava_pid = spawn("cava")
   end
   
+  def idle_timer
+    while true do
+      Celluloid.sleep 5
+      if @framecount == 0 && @active then
+        puts "now idle..."
+        @active = false
+        @on_idle.call if @on_idle
+      end
+      @framecount = 0
+    end
+  end
+  
   def open_fifo
     begin
-      @f = File.open(@fifo_path, 'r+')
+      @fifo = File.open(@fifo_path, 'r+')
     rescue Errno::ENOENT => e
       puts "cava fifo: file not found?..."
       binding.pry
@@ -158,27 +207,10 @@ class CavaReader
   end
   
   def run
-    while @keep_running do
-      l = @f.readline
-      bars = l.strip.split " "
-      bars.map! &:to_i
-
-      @flashy.send_rgb @s2rgb.spectral_center_of_mass(bars)
-    end
-  end
-  
-  def beep
-    puts "beeping"
-  end
-
-  
+    @reader.async.run
+    async.idle_timer
+  end  
 end
-
-$flashy = Flashist.new
-$s2rgb = SpectrumToRGB.new
-
-$cava = CavaReader.new "/tmp/cava.fifo", $s2rgb, $flashy
-
 
 class ControlServer
   attr_accessor :app
@@ -187,7 +219,6 @@ class ControlServer
     @opt = opt || {}
     @opt[:Port] ||= 8053
     
-    @cava = opt[:cava]
     @s2rgb = opt[:s2rgb]
     
     if block_given?
@@ -204,7 +235,6 @@ class ControlServer
       req = Rack::Request.new(env)
       
       if req.request_method == "POST"
-        awesome_print req.params
         @s2rgb.peaks_measure_count = req.params["peaks_measure_count"].to_i if req.params["peaks_measure_count"]
         @s2rgb.colorscale = req.params["colorscale"].to_f if req.params["colorscale"]
         @s2rgb.colordrift = req.params["colordrift"].to_f if req.params["colordrift"]
@@ -315,6 +345,41 @@ class ControlServer
   def stop
     @supervisor.terminate
   end
+end
+
+class Wavegen
+  include Celluloid
+  def initialize(flashist)
+    @flashist = flashist
+    @hsl = Color::HSL.new
+    @hue_step = 0.007
+    @l_step = 0.001
+    @l_min = 2.0/255
+    @l_max = 170.0/255
+    @l_cur = 0
+    
+  end
+  
+  def generate
+    while @running do
+      Celluloid.sleep(1.0/100)
+      @hsl.h = (@hue_step + @hsl.h) % 1
+      @hsl.s=0.7
+      @hsl.l=0.5
+      @flashist.send_rgb @hsl.to_rgb      
+    end
+  end
+  private :generate
+  
+  def run(rgb = nil)
+    @running = true
+    self.async.generate
+  end
+  
+  def stop
+    @running = false
+  end
+end
 
   
 end
