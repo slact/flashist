@@ -3,7 +3,6 @@ require 'rubygems'
 require 'bundler/setup'
 require "celluloid"
 require "celluloid/current"
-require "timers"
 require "hidapi"
 
 
@@ -13,12 +12,12 @@ require "color"
 
 require "pry"
 
-timers = Timers::Group.new
 class HIDAPI::Device
   def kill_read_thread
     @thread.kill
     self.shutdown_thread = true
   end
+  public :mutex
 end
 
 class Flashist #don't punch me bro@cava
@@ -27,6 +26,7 @@ class Flashist #don't punch me bro@cava
   end
   
   def init_device
+    puts "init device"
     begin
       @dev = HIDAPI::open(0x16c0, 0x0486)
     rescue Exception => e
@@ -100,7 +100,7 @@ class SpectrumToRGB
     h = ((m*@colorscale + @offset)*360) % 360
     h = 0 if h.nan?
     
-    s = 1
+    s = 0.8
     l = max_sum.to_f / (@peaks_measure_count * 4096)
     
     #puts [h.to_i, s, l.round(5)].to_s
