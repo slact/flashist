@@ -1,17 +1,17 @@
 #!/usr/bin/ruby
-require "celluloid"
 require 'rubygems'
 require 'bundler/setup'
+require "celluloid"
+require "celluloid/current"
 require "timers"
 require "hidapi"
 
-require "celluloid/current"
+
 require 'reel/rack'
 require "color"
-require "color-rgb"
+
 
 require "pry"
-require "awesome_print"
 
 timers = Timers::Group.new
 class HIDAPI::Device
@@ -21,39 +21,44 @@ class HIDAPI::Device
   end
 end
 
-#dev = HIDAPI::open(0x16c0, 0x0486)
-
-#dev.kill_read_thread
-
-class Flashist #don't punch me bro
+class Flashist #don't punch me bro@cava
   def initialize
+    init_device
+  end
+  
+  def init_device
     @dev = HIDAPI::open(0x16c0, 0x0486)
     @dev.kill_read_thread
   end
   
+  def send_raw(*args)
+    begin
+      @dev.write(*args)
+    rescue LIBUSB::ERROR_IO
+      puts "OH NO BAD THING"
+    end
+  end
+  
   def send_rgb(rgb)
     #puts [rgb.r, rgb.g, rgb.b].to_s
-    @dev.write(42, (rgb.r*255).to_i, (rgb.g*255).to_i, (rgb.b*255).to_i)
+    send_raw(42, (rgb.r*255).to_i, (rgb.g*255).to_i, (rgb.b*255).to_i)
   end
   def send_hello
-    @dev.write(">")
+    send_raw ">"
   end
 end
 
 class SpectrumToRGB
   attr_accessor :colordrift, :colorscale, :peaks_measure_count, :redblue_shift
   
-  def initialize(r_range=0.33..0.66, g_range=0.66..1, b_range=0..0.33)
-    @r=r_range
-    @g=g_range
-    @b=b_range
-
+  def initialize
     @offset = 0
     
     @peaks_measure_count = 10
     @colordrift = 0
     @colorscale = 1.5
     @redblue_shift = 0
+    @floor = 1
   end
   
   def spectral_center_of_mass(bars)
@@ -90,6 +95,13 @@ class SpectrumToRGB
       rgb = Color::RGB.new(rgb.r, rgb.g, rgb.b)
     end
     
+    if @floor > 0
+      min = @floor.to_f/255
+      rgb.r = min if rgb.r < min
+      rgb.g = min if rgb.g < min
+      rgb.b = min if rgb.b < min
+    end
+    
     if @redblue_shift > 0
       swap = rgb.b * @redblue_shift.abs
       rgb.b -= swap
@@ -102,41 +114,33 @@ class SpectrumToRGB
     
     return rgb
   end
-  
-  def chop_spectrum(bars)
-    ll = bars.length
-
-    cbars=[]
-    
-    cbars[0] = bars[ll*@r.begin..ll*@r.end]
-    cbars[1] = bars[ll*@g.begin..ll*@g.end]
-    cbars[2] = bars[ll*@b.begin..ll*@b.end]
-
-    cbright=[]
-    cbars.each_with_index do |cbar, i|
-      #csum = cbar.inject 0, :+
-      #cmax = cbar.count * 4096
-      #cbright[i] = ((csum.to_f/cmax)*255).to_i
-      
-      cbright[i]=((cbar.max.to_f/4096.0)*255).to_i
-    end
-
-    @rgb.set(*cbright)
-    @dev.write(@rgb.packet)
-  end
 end
 
 
 class CavaReader
   include Celluloid
-  attr_accessor :s2rgb
+  attr_accessor :s2rgb, :keep_running
   def initialize(path, s2rgb, flashy)
-    @f = File.open(path, 'r')
     @s2rgb = s2rgb
     @flashy = flashy
     @keep_running = true
+    @fifo_path = path
+    open_fifo
   end
 
+  def spawn_cava
+    @cava_pid = spawn("cava")
+  end
+  
+  def open_fifo
+    begin
+      @f = File.open(@fifo_path, 'r+')
+    rescue Errno::ENOENT => e
+      puts "cava fifo: file not found?..."
+      binding.pry
+    end
+  end
+  
   def run
     while @keep_running do
       l = @f.readline
@@ -154,12 +158,10 @@ class CavaReader
   
 end
 
-flashy = Flashist.new
-s2rgb = SpectrumToRGB.new
-cava = CavaReader.new "/tmp/cava.fifo", s2rgb, flashy
-cava.async.run
+$flashy = Flashist.new
+$s2rgb = SpectrumToRGB.new
 
-
+$cava = CavaReader.new "/tmp/cava.fifo", $s2rgb, $flashy
 
 
 class ControlServer
@@ -301,7 +303,8 @@ class ControlServer
   
 end
 
-server = ControlServer.new(cava: cava, s2rgb: s2rgb)
+$server = ControlServer.new(cava: $cava, s2rgb: $s2rgb)
+$server.run
 
-server.run
-cava.wait
+$cava.async.run
+$cava.wait
