@@ -39,13 +39,20 @@ class Flashist #don't punch me bro@cava
   end
   
   def send_raw(*args)
+    #puts "send raw"
     init_device unless @dev
     begin
       @dev.write(*args) if @dev
+    rescue LIBUSB::ERROR_BUSY => e
+      puts "write failed, device busy. don't worry about it though"
     rescue Exception => e
-      puts "device write failed"
+      puts "device write failed, exception #{e}"
+      sleep 0.1
+      puts "gonna close and reopen"
       @dev.close
+      sleep 0.1
       @dev = nil
+      puts "done device failed #{@dev}"
     end
   end
   
