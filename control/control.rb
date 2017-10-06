@@ -57,7 +57,6 @@ class Flashist #don't punch me bro@cava
   end
   
   def send_rgb(rgb)
-    #puts [rgb.r, rgb.g, rgb.b].to_s
     send_raw(42, (rgb.r*255).to_i, (rgb.g*255).to_i, (rgb.b*255).to_i)
   end
   def send_hello
@@ -351,22 +350,30 @@ class Wavegen
   include Celluloid
   def initialize(flashist)
     @flashist = flashist
-    @hsl = Color::HSL.new
-    @hue_step = 0.007
-    @l_step = 0.001
-    @l_min = 2.0/255
-    @l_max = 170.0/255
-    @l_cur = 0
-    
+    @step = 0.003
+    @x = 0
+    @min = 2.0/255
+    @a = @min
+    @a_step = 0.001
+  end
+  
+  def wave(x)
+    (Math.sin((x)*2*Math::PI - Math::PI/2)+1)/2
   end
   
   def generate
     while @running do
-      Celluloid.sleep(1.0/100)
-      @hsl.h = (@hue_step + @hsl.h) % 1
-      @hsl.s=0.7
-      @hsl.l=0.5
-      @flashist.send_rgb @hsl.to_rgb      
+      Celluloid.sleep(1.0/30)
+      rgb = Color::RGB.new
+      a = wave(@a)
+      rgb.r = wave(@x) * a + @min
+      rgb.g = wave(@x+1.0/3) * a + @min
+      rgb.b = wave(@x+2.0/3) * a + @min
+    
+      @x+=@step
+      @a+=@a_step
+
+      @flashist.send_rgb rgb
     end
   end
   private :generate
