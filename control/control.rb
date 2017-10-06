@@ -68,7 +68,7 @@ class SpectrumToRGB
     @colordrift = 0
     @colorscale = 1.5
     @redblue_shift = 0
-    @floor = 1
+    @floor = 2
   end
   
   def spectral_center_of_mass(bars)
@@ -106,10 +106,9 @@ class SpectrumToRGB
     end
     
     if @floor > 0
-      min = @floor.to_f/255
-      rgb.r = min if rgb.r < min
-      rgb.g = min if rgb.g < min
-      rgb.b = min if rgb.b < min
+      rgb.r += (@floor.to_f/255)
+      rgb.g += (@floor.to_f/255)
+      rgb.b += (@floor.to_f/255)
     end
     
     if @redblue_shift > 0
