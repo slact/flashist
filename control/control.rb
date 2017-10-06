@@ -381,11 +381,47 @@ class Wavegen
   end
 end
 
+class Control
+  include Celluloid
+  def initialize
+    @flashist = Flashist.new
+    @s2rgb = SpectrumToRGB.new
+    @wavegen = Wavegen.new @flashist
+    @idle = false
+    
+    @cava = CavaReader.new "/tmp/cava.fifo", @s2rgb, @flashist
+    @cava.on_idle do
+      @idle = true
+      @wavegen.run
+    end
+    @cava.on_active do
+      @wavegen.stop
+    end
+    @server = ControlServer.new(s2rgb: @s2rgb)
+  end
   
+  def ping_timer
+    while true do
+      Celluloid.sleep(1)
+      if @idle then
+        #ping device
+        puts "ping"
+        @flashist.send_hello
+      end
+      
+    end
+  end
+  private :ping_timer
+  
+  def run
+    @server.run
+    @wavegen.run
+    @cava.run
+    self.async.ping_timer
+  end
 end
 
-$server = ControlServer.new(cava: $cava, s2rgb: $s2rgb)
-$server.run
+control = Control.new
+control.run
 
-$cava.async.run
-$cava.wait
+sleep
