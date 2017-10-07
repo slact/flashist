@@ -339,7 +339,7 @@ class Wavegen
     @flashist = flashist
     @color_cycling_speed = 0.003
     @x = 0
-    @min = 2.0/255
+    @min = 0 #2.0/255
     @a = @min
     @brightness_cycling_speed = 0.001
     @current_brightness = @min
@@ -369,12 +369,20 @@ class Wavegen
   def generate
     while @running do
       Celluloid.sleep(1.0/30)
-      rgb = Color::RGB.new
-      a = wave(@a)
-      @current_brightness = a
-      rgb.r = wave(@x) * a + @min
-      rgb.g = wave(@x+1.0/3) * a + @min
-      rgb.b = wave(@x+2.0/3) * a + @min
+      rgb = @color_cycling_speed > 0 ? Color::RGB.new : @current_color
+      if @brightness_cycling_speed > 0
+        a = wave(@a)
+        @current_brightness = a
+      end
+      if @color_cycling_speed > 0
+        rgb.r = wave(@x) * a + @min
+        rgb.g = wave(@x+1.0/3) * a + @min
+        rgb.b = wave(@x+2.0/3) * a + @min
+      elsif @brightness_cycling_speed > 0
+        rgb.r = rgb.r * a
+        rgb.g = rgb.g * a
+        rgb.b = rgb.b * a
+      end
       @current_color = rgb
       @x+=@color_cycling_speed
       @a+=@brightness_cycling_speed
