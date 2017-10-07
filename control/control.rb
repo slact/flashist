@@ -4,7 +4,9 @@ require 'bundler/setup'
 require "celluloid"
 require "celluloid/current"
 require "hidapi"
+require "erb"
 
+require "json"
 
 require 'reel/rack'
 require "color"
@@ -26,7 +28,7 @@ class Flashist #don't punch me bro@cava
   end
   
   def init_device
-    puts "init device"
+    #puts "init device"
     begin
       @dev = HIDAPI::open(0x16c0, 0x0486)
     rescue Exception => e
@@ -71,10 +73,19 @@ class SpectrumToRGB
     @offset = 0
     
     @peaks_measure_count = 10
-    @colordrift = 0
+    @colordrift = 0.01
     @colorscale = 1.5
     @redblue_shift = 0
     @floor = 2
+  end
+  
+  def get_info
+    {
+      peaks_measure_count: @peaks_measure_count,
+      colorscale: @colorscale,
+      colordrift: @colordrift,
+      redblue_shift: @redblue_shift
+    }
   end
   
   def spectral_center_of_mass(bars)
@@ -144,8 +155,12 @@ class CavaReader
     
     def run
       while true do
-        l = @parent.fifo.readline
-        @parent.receive_line l
+        begin
+          l = @parent.fifo.readline
+          @parent.receive_line l
+        rescue Exception => e
+          #don't mind it, really
+        end
       end
     end
   end
@@ -201,7 +216,7 @@ class CavaReader
       @fifo = File.open(@fifo_path, 'r+')
     rescue Errno::ENOENT => e
       puts "cava fifo: file not found?..."
-      binding.pry
+      #binding.pry
     end
   end
   
@@ -219,11 +234,32 @@ class ControlServer
     @opt[:Port] ||= 8053
     
     @s2rgb = opt[:s2rgb]
+    @wavegen = opt[:wavegen]
     
+    @index = ERB.new(File.read File.join(__dir__, 'web', 'index.erb'))
+    @mootools = File.read File.join(__dir__, 'web', 'moo.js')
     if block_given?
       opt[:callback]=Proc.new
     end
-
+    
+    def gather_info 
+      {active: @s2rgb.get_info, idle: @wavegen.get_info }
+    end
+    
+    def set_maybe(req, obj, param, kind = nil)
+      if req.params[param]
+        case kind
+        when :float
+          val = req.params[param].to_f
+        when :int
+          val = req.params[param].to_i
+        else
+          val = req.params[param]
+        end
+        obj.send"#{param}=", val
+      end
+    end
+    
     @app = proc do |env|
       resp = []
       headers = {}
@@ -234,78 +270,28 @@ class ControlServer
       req = Rack::Request.new(env)
       
       if req.request_method == "POST"
-        @s2rgb.peaks_measure_count = req.params["peaks_measure_count"].to_i if req.params["peaks_measure_count"]
-        @s2rgb.colorscale = req.params["colorscale"].to_f if req.params["colorscale"]
-        @s2rgb.colordrift = req.params["colordrift"].to_f if req.params["colordrift"]
-        @s2rgb.redblue_shift = req.params["redblue_shift"].to_f if req.params["redblue_shift"]
+        set_maybe req, @s2rgb, "peaks_measure_count", :int
+        set_maybe req, @s2rgb, "colorscale", :float
+        set_maybe req, @s2rgb, "colordrift", :float
+        set_maybe req, @s2rgb, "redblue_shift", :float
+        
+        set_maybe req, @wavegen, "color_cycling_speed", :float
+        set_maybe req, @wavegen, "current_color"
+        set_maybe req, @wavegen, "brightness_cycling_speed", :float
+        set_maybe req, @wavegen, "current_brightness", :float
+        
         headers["Content-Type"] = "text/json"
-        resp << "{}"
+        resp << JSON.generate(gather_info)
       else
-      
         case env["REQUEST_PATH"] || env["PATH_INFO"]
         when "/"
-          resp << "
-            <html>
-              <head>
-                <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/mootools/1.6.0/mootools-core.min.js'></script>
-                <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/mootools-more/1.6.0/mootools-more-compressed.js'></script>
-              </head>
-              <body>
-                <form method='post' action=''>
-                  <label>
-                    Amplitude peak smoothing
-                    <input name='peaks_measure_count' list='smoothings' type='range' min='1' max='90' value='#{@s2rgb.peaks_measure_count}' />
-                    <datalist id='smoothings'>
-                      <option value='1' label='spiky' >
-                      <option value='90' label='smooth' >
-                    </datalist>
-                  </label>
-                  
-                  <label>
-                    Color responsiveness
-                    <input name='colorscale' type='range' min='1' max='3' value='#{@s2rgb.colorscale}' step='0.1' />
-                  </label>
-                  
-                  <label>
-                    Color drift
-                    <input name='colordrift' list='colordrifts' type='range' min='0' max='0.01' value='#{@s2rgb.colordrift}' step='0.00001' />
-                    <datalist id='colordrifts'>
-                      <option value='0' label='none' />
-                      <option value='0.001' label='slow' />
-                      <option value='0.01' label='fast' />
-                      <option value='0.1' label='wacky' />
-                    </datalist>
-                  </label>
-                  
-                  <label>
-                    Color Temperature
-                    <input name='redblue_shift' list='temps' type='range' min='-1' max='1' value='#{@s2rgb.redblue_shift}' step='0.01' />
-                    <datalist id='temps'>
-                      <option value='-1' label='cool' />
-                      <option value='0' label='neutral' />
-                      <option value='1' label='warm' />
-                    </datalist>
-                </form>
-                
-                <script type='text/javascript'>
-                  var form = document.getElement('form');
-                  var req = new Form.Request(form, null, {resetForm: false});
-                  
-                  form.getElements('input').each(function(el) {
-                    console.log('added');
-                    el.addEvent('change', function() {
-                      console.log('hey', el);
-                      req.send();
-                      
-                    });
-                  });
-                
-                </script>
-              </body>
-            </html>
-          "
-        when "/update"
-          
+          resp << @index.result(binding)
+        when "/info"
+          resp << JSON.generate(gather_info)
+          headers["Content-Type"]="text/json"
+        when "/moo.js"
+          resp << @mootools
+          headers["Content-Type"]="text/javascript"
         else
           code = 404
           resp << (env["REQUEST_PATH"] || env["PATH_INFO"])
@@ -348,13 +334,32 @@ end
 
 class Wavegen
   include Celluloid
+  attr_accessor :color_cycling_speed, :brightness_cycling_speed
   def initialize(flashist)
     @flashist = flashist
-    @step = 0.003
+    @color_cycling_speed = 0.003
     @x = 0
     @min = 2.0/255
     @a = @min
-    @a_step = 0.001
+    @brightness_cycling_speed = 0.001
+    @current_brightness = @min
+  end
+  
+  def get_info
+    {
+      color_cycling_speed: @color_cycling_speed,
+      current_color: @current_color ? @current_color.html : "#101010",
+      brightness_cycling_speed: @brightness_cycling_speed
+    }
+  end
+
+  def current_color=(val)
+    begin
+      newcolor = Color::RGB.by_css(val)
+    rescue Exception => e
+      newcolor = nil
+    end
+    @current_color = newcolor if newcolor
   end
   
   def wave(x)
@@ -366,13 +371,14 @@ class Wavegen
       Celluloid.sleep(1.0/30)
       rgb = Color::RGB.new
       a = wave(@a)
+      @current_brightness = a
       rgb.r = wave(@x) * a + @min
       rgb.g = wave(@x+1.0/3) * a + @min
       rgb.b = wave(@x+2.0/3) * a + @min
-    
-      @x+=@step
-      @a+=@a_step
-
+      @current_color = rgb
+      @x+=@color_cycling_speed
+      @a+=@brightness_cycling_speed
+      
       @flashist.send_rgb rgb
     end
   end
@@ -404,7 +410,7 @@ class Control
     @cava.on_active do
       @wavegen.stop
     end
-    @server = ControlServer.new(s2rgb: @s2rgb)
+    @server = ControlServer.new(s2rgb: @s2rgb, wavegen: @wavegen)
   end
   
   def ping_timer
