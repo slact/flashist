@@ -15,11 +15,18 @@ require "color"
 require "pry"
 
 class HIDAPI::Device
+  class FakeMutex
+    def synchronize
+      yield
+    end
+  end
   def kill_read_thread
     @thread.kill
     self.shutdown_thread = true
   end
-  public :mutex
+  def use_fake_mutex
+    @mutex=FakeMutex.new
+  end
 end
 
 class Flashist #don't punch me bro@cava
@@ -36,6 +43,8 @@ class Flashist #don't punch me bro@cava
     end
     if @dev
       @dev.kill_read_thread
+      @dev.blocking=false
+      @dev.use_fake_mutex
       #puts "device connected"
     end
   end
@@ -45,16 +54,12 @@ class Flashist #don't punch me bro@cava
     init_device unless @dev
     begin
       @dev.write(*args) if @dev
-    rescue LIBUSB::ERROR_BUSY => e
-      puts "write failed, device busy. don't worry about it though"
     rescue Exception => e
       puts "device write failed, exception #{e}"
       sleep 0.1
-      puts "gonna close and reopen"
-      @dev.close
+      @dev.close if @dev
       sleep 0.1
       @dev = nil
-      puts "done device failed #{@dev}"
     end
   end
   
