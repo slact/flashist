@@ -80,6 +80,20 @@
           <option value='10' label='smooth and low' />
         </datalist>
       </label>
+      <label>
+        Amplification
+        <p class="info">
+          Boost the brightness
+        </p>
+        <input name='amplification' list='amplifications' type='range' min='1' max='14' value='<%=@s2rgb.amplification%>' />
+        <datalist id='amplifications'>
+          <option value='1' label='None' />
+          <option value='2' label='Just a bit' />
+          <option value='5' label='Might be too bright' />
+          <option value='11' label='This one goes to 11' />
+          <option value='11' label='Way past overdrive' />
+        </datalist>
+      </label>
       
       <label>
         Color responsiveness

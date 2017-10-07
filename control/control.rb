@@ -67,21 +67,23 @@ class Flashist #don't punch me bro@cava
 end
 
 class SpectrumToRGB
-  attr_accessor :colordrift, :colorscale, :peaks_measure_count, :redblue_shift
+  attr_accessor :colordrift, :colorscale, :peaks_measure_count, :redblue_shift, :amplification
   
   def initialize
     @offset = 0
     
-    @peaks_measure_count = 10
-    @colordrift = 0.01
+    @peaks_measure_count = 6
+    @colordrift = 0.008
     @colorscale = 1.5
     @redblue_shift = 0
-    @floor = 2
+    @floor = 0
+    @amplification = 4
   end
   
   def get_info
     {
       peaks_measure_count: @peaks_measure_count,
+      amplification: @amplification,
       colorscale: @colorscale,
       colordrift: @colordrift,
       redblue_shift: @redblue_shift
@@ -112,6 +114,8 @@ class SpectrumToRGB
     
     s = 0.8
     l = max_sum.to_f / (@peaks_measure_count * 4096)
+    l = l * @amplification
+    l = 1.0 if l > 1
     
     #puts [h.to_i, s, l.round(5)].to_s
     
@@ -271,6 +275,7 @@ class ControlServer
       
       if req.request_method == "POST"
         set_maybe req, @s2rgb, "peaks_measure_count", :int
+        set_maybe req, @s2rgb, "amplification", :int
         set_maybe req, @s2rgb, "colorscale", :float
         set_maybe req, @s2rgb, "colordrift", :float
         set_maybe req, @s2rgb, "redblue_shift", :float
