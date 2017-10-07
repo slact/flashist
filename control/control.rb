@@ -424,9 +424,11 @@ class Control
     @cava.on_idle do
       @idle = true
       @wavegen.run
+      true
     end
     @cava.on_active do
       @wavegen.stop
+      true
     end
     @server = ControlServer.new(s2rgb: @s2rgb, wavegen: @wavegen)
   end
