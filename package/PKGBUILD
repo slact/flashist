@@ -1,5 +1,5 @@
 pkgname=flashist-git
-pkgver=25.ee51a4d
+pkgver=26.2534137
 pkgrel=1
 epoch=
 pkgdesc=""
@@ -34,8 +34,7 @@ package () {
     install -D -m644 $f "$pkgdir/opt/flashist/$f"
   done
 
-  mkdir -p $pkgdir/opt/flashist/bundle
-  cp -dpr --no-preserve=ownership "bundle/" "$pkgdir/opt/flashist/bundle"
+  cp -dpr --no-preserve=ownership "./bundle/" "$pkgdir/opt/flashist/"
   
   mkdir -p $pkgdir/etc/flashist
   install -D -m644 control.conf $pkgdir/etc/flashist/control.conf
