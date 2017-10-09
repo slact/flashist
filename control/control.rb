@@ -1,9 +1,13 @@
 #!/usr/bin/ruby
 require 'rubygems'
 require 'bundler/setup'
-require "celluloid"
+
+require "optparse"
+require 'ruby-conf'
+
+
 require "celluloid/current"
-require "hidapi"
+require "rawhid"
 require "erb"
 
 require "json"
@@ -11,25 +15,21 @@ require "json"
 require 'reel/rack'
 require "color"
 
-
 require "pry"
 
-class HIDAPI::Device
-  class FakeMutex
-    def synchronize
-      yield
-    end
-  end
-  def kill_read_thread
-    @thread.kill
-    self.shutdown_thread = true
-  end
-  def use_fake_mutex
-    @mutex=FakeMutex.new
-  end
-end
+opt = {
+  config_file: "/etc/flashist/flashist.conf"
+}
 
-class Flashist #don't punch me bro@cava
+opt_parser = OptionParser.new do |opts|
+  opts.on("-c", "--config PATH (#{opt[:config_file]})", "config file"){|v| opt[:config_file] = v}
+end
+opt_parser.parse!
+
+load opt[:config_file]
+$conf = RubyConf.flashist
+
+class Flashist #don't punch me bro
   def initialize
     init_device
   end
@@ -37,29 +37,28 @@ class Flashist #don't punch me bro@cava
   def init_device
     #puts "init device"
     begin
-      @dev = HIDAPI::open(0x16c0, 0x0486)
-    rescue Exception => e
-      puts "device not found"
+      @dev = RawHID.new(*$conf.device)
+    rescue RawHID::RawHIDError => e
+      puts "flashist device couldn't be opened"
     end
     if @dev
-      @dev.kill_read_thread
-      @dev.blocking=false
-      @dev.use_fake_mutex
-      #puts "device connected"
+      puts "flashist device connected"
     end
   end
   
   def send_raw(*args)
-    #puts "send raw"
     init_device unless @dev
     begin
-      @dev.write(*args) if @dev
-    rescue Exception => e
-      puts "device write failed, exception #{e}"
-      sleep 0.1
+      @dev.write(args) if @dev
+    rescue RawHID::RawHIDError => e
+      puts "device write failed! exception #{e} #{e.class} code #{e.code}"
+      puts "HEYOO"
       @dev.close if @dev
-      sleep 0.1
-      @dev = nil
+      puts "closed"
+      @dev=nil
+      puts "#{@dev.to_s}"
+      sleep 0.1 
+      
     end
   end
   
@@ -132,19 +131,20 @@ class SpectrumToRGB
     end
     
     if @floor > 0
-      rgb.r += (@floor.to_f/255)
-      rgb.g += (@floor.to_f/255)
-      rgb.b += (@floor.to_f/255)
+      incr = @floor.to_f/255
+      rgb.r = [rgb.r+incr, 1].min
+      rgb.g = [rgb.g+incr, 1].min
+      rgb.b = [rgb.b+incr, 1].min
     end
     
     if @redblue_shift > 0
       swap = rgb.b * @redblue_shift.abs
-      rgb.b -= swap
-      rgb.r += swap
+      rgb.b = [rgb.b - swap, 0].max
+      rgb.r = [rgb.r + swap, 1].min
     elsif @redblue_shift < 0
       swap = rgb.r * @redblue_shift.abs
-      rgb.r -= swap
-      rgb.b += swap
+      rgb.r = [rgb.r - swap, 0].max
+      rgb.b = [rgb.r + swap, 1].min
     end
     
     return rgb
@@ -240,7 +240,7 @@ class ControlServer
 
   def initialize(opt={})
     @opt = opt || {}
-    @opt[:Port] ||= 8053
+    @opt[:Port] ||= $conf.server_port
     
     @s2rgb = opt[:s2rgb]
     @wavegen = opt[:wavegen]
@@ -378,8 +378,11 @@ class Wavegen
   
   def generate
     while @running do
-      Celluloid.sleep(1.0/30)
+      Celluloid.sleep(1.0/20)
       rgb = @color_cycling_speed > 0 ? Color::RGB.new : @current_color
+      if rgb.frozen?
+        rgb = Color::RGB.new(rgb.r, rgb.g, rgb.b)
+      end
       if @brightness_cycling_speed > 0
         a = wave(@a)
         @current_brightness = a
@@ -420,7 +423,7 @@ class Control
     @wavegen = Wavegen.new @flashist
     @idle = false
     
-    @cava = CavaReader.new "/tmp/cava.fifo", @s2rgb, @flashist
+    @cava = CavaReader.new $conf.cava_fifo, @s2rgb, @flashist
     @cava.on_idle do
       @idle = true
       @wavegen.run
@@ -438,7 +441,7 @@ class Control
       Celluloid.sleep(1)
       if @idle then
         #ping device
-        puts "ping"
+        #puts "ping"
         @flashist.send_hello
       end
       
@@ -451,6 +454,9 @@ class Control
     @wavegen.run
     @cava.run
     self.async.ping_timer
+    sleep 1
+    #drop pidfile
+    File.write($conf.pidfile, Process.pid)
   end
 end
 

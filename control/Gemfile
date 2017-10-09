@@ -1,7 +1,17 @@
 #!/usr/bin/ruby
 source 'https://rubygems.org'
 gem 'celluloid'
-gem 'hidapi'
+gem "ruby-conf"
+
+gem 'rawhid'
+
+#gem "HDRHistogram"
+
+#gem 'hidapi'
+
+#gem 'hid_api', :git => "https://github.com/slact/ruby_hid_api"
+#gem "ruby_hidapi", :path => "/home/leop/sandbox/ruby-hidapi"
+
 gem 'reel'
 gem 'reel-rack', :git => "https://github.com/slact/reel-rack.git"
 gem 'color'

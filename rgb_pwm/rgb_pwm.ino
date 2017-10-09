@@ -117,12 +117,12 @@ uint8_t toggle_internal_status() {
 void status_indicator() {
   int off = digitalRead(12);
 
-  Serial.println(off);
+  //Serial.println(off);
  
   if(off) {
     //DISABLE pin
     if(disabled != 1) {
-      Serial.println(F("disable"));
+      //Serial.println(F("disable"));
       Timer3.stop();
       Timer3.initialize(100);
       Timer3.start();
@@ -134,7 +134,7 @@ void status_indicator() {
   }
   else {
     if(disabled != 0) {
-      Serial.println(F("enable"));
+      //Serial.println(F("enable"));
       Timer3.stop();
       Timer3.initialize(1000000);
       Timer3.start();
@@ -159,7 +159,7 @@ void status_indicator() {
 void setup(void)
 { 
 
-  Serial.begin(9600);
+  //Serial.begin(9600);
   
   Timer1.initialize(500);
   Timer1.start();
