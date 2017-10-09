@@ -24,7 +24,7 @@ require "json"
 require 'reel/rack'
 require "color"
 
-require "pry"
+#require "pry"
 
 opt = {
   config_file: "/etc/flashist/control.conf"

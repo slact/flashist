@@ -1,5 +1,5 @@
 pkgname=flashist-git
-pkgver=0.1
+pkgver=25.ee51a4d
 pkgrel=1
 epoch=
 pkgdesc=""
@@ -8,8 +8,12 @@ url=""
 license=('MIT')
 groups=()
 depends=('cava' 'ruby' 'ruby-bundler' 'pulseaudio')
-backup=( 'etc/flashist/flashist.conf' 'etc/flashist/cava.conf')
+backup=( 'etc/flashist/control.conf' 'etc/flashist/cava.conf')
 source=("git+https://github.com/slact/flashist.git")
+
+pkgver() {
+  echo $(git rev-list --count HEAD).$(git rev-parse --short HEAD)
+}
 
 md5sums=('SKIP')
 
@@ -27,9 +31,11 @@ package () {
 
   mkdir -p $pkgdir/opt/flashist/web
   for f in web/*; do
-    echo $f
     install -D -m644 $f "$pkgdir/opt/flashist/$f"
   done
+
+  mkdir -p $pkgdir/opt/flashist/bundle
+  cp -dpr --no-preserve=ownership "bundle/" "$pkgdir/opt/flashist/bundle"
   
   mkdir -p $pkgdir/etc/flashist
   install -D -m644 control.conf $pkgdir/etc/flashist/control.conf
