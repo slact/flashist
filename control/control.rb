@@ -27,7 +27,7 @@ require "color"
 require "pry"
 
 opt = {
-  config_file: "/etc/flashist/flashist.conf"
+  config_file: "/etc/flashist/control.conf"
 }
 
 opt_parser = OptionParser.new do |opts|
