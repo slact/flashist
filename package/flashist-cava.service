@@ -1,0 +1,12 @@
+[Unit]
+Description=Flashist RGB LED Party (Cava)!!
+Requires=sound.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/cava -p /etc/flashist/cava.conf
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

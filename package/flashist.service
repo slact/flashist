@@ -1,0 +1,12 @@
+[Unit]
+Description=Flashist RGB LED Party (generator and control)!!
+Requires=flashist-cava.service
+
+[Service]
+Type=simple
+ExecStart=/opt/flashist/control.rb
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

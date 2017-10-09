@@ -1,0 +1,41 @@
+pkgname=flashist-git
+pkgver=0.1
+pkgrel=1
+epoch=
+pkgdesc=""
+arch=('i686' 'x86_64')
+url=""
+license=('MIT')
+groups=()
+depends=('cava' 'ruby' 'ruby-bundler' 'pulseaudio')
+backup=( 'etc/flashist/flashist.conf' 'etc/flashist/cava.conf')
+source=("git+https://github.com/slact/flashist.git")
+
+md5sums=('SKIP')
+
+prepare() {
+  cd "$srcdir/flashist/control"
+  bundle install --standalone
+}
+
+
+package () {
+  cd "$srcdir/flashist/control"
+
+  mkdir -p $pkgdir/opt/flashist
+  install -D -m755 "control.rb" "${pkgdir}/opt/flashist/control.rb"
+
+  mkdir -p $pkgdir/opt/flashist/web
+  for f in web/*; do
+    echo $f
+    install -D -m644 $f "$pkgdir/opt/flashist/$f"
+  done
+  
+  mkdir -p $pkgdir/etc/flashist
+  install -D -m644 control.conf $pkgdir/etc/flashist/control.conf
+  install -D -m644 cava.conf $pkgdir/etc/flashist/cava.conf
+
+  cd ../package
+  install -D -m644 "flashist.service" "${pkgdir}/usr/lib/systemd/system/flashist.service"
+  install -D -m644 "flashist-cava.service" "${pkgdir}/usr/lib/systemd/system/flashist-cava.service"
+}
