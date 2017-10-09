@@ -1,5 +1,5 @@
 pkgname=flashist-git
-pkgver=26.2534137
+pkgver=28.97923ae
 pkgrel=1
 epoch=
 pkgdesc=""
@@ -39,6 +39,7 @@ package () {
   mkdir -p $pkgdir/etc/flashist
   install -D -m644 control.conf $pkgdir/etc/flashist/control.conf
   install -D -m644 cava.conf $pkgdir/etc/flashist/cava.conf
+  install -D -m644 cava.env $pkgdir/etc/flashist/cava.env
 
   cd ../package
   install -D -m644 "flashist.service" "${pkgdir}/usr/lib/systemd/system/flashist.service"
