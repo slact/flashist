@@ -179,11 +179,18 @@ class CavaReader
     
     def run
       while true do
-        begin
-          l = @parent.fifo.readline
-          @parent.receive_line l
-        rescue Exception => e
-          #don't mind it, really
+        fifo = @parent.fifo
+        if fifo.nil?
+          Celluloid.sleep 1
+          @parent.open_fifo
+        else
+          begin
+            l = fifo.readline
+            @parent.receive_line l
+          rescue Exception => e
+            #don't mind it, really
+            Celluloid.sleep 0.1
+          end
         end
       end
     end
