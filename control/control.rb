@@ -13,8 +13,9 @@ end
 require "optparse"
 require 'ruby-conf'
 
-
+require "celluloid"
 require "celluloid/current"
+require "celluloid/logger"
 require "rawhid"
 require "erb"
 
