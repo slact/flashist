@@ -4,7 +4,7 @@ Requires=sound.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/cava -p /etc/flashist/cava.conf
+ExecStart=/usr/bin/bash -c "/usr/bin/cava -p /etc/flashist/cava.conf"
 Restart=always
 RestartSec=5
 
