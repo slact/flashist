@@ -99,6 +99,10 @@ class SpectrumToRGB
     @amplification = 4
   end
   
+  def idle_max_level
+    @floor + 3
+  end
+  
   def get_info
     {
       peaks_measure_count: @peaks_measure_count,
@@ -203,8 +207,12 @@ class CavaReader
       @active = true
       @on_active.call if @on_active
     end
-    @framecount += 1
-    @flashy.send_rgb @s2rgb.spectral_center_of_mass(bars)
+    rgb = @s2rgb.spectral_center_of_mass(bars)
+    maxidle = @s2rgb.idle_max_level
+    if rgb.r > maxidle &&  rgb.g > maxidle && rgb.b > maxidle
+      @framecount += 1
+    end
+    @flashy.send_rgb rgb
   end
   
   def initialize(path, s2rgb, flashy)
