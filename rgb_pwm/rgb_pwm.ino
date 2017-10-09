@@ -113,59 +113,85 @@ uint8_t toggle_internal_status() {
 }
 
 
+#define STATUS_CHECK_TICKS 1000
+#define STATUS_CHECK_BLINK_ON_TICKS 200
+#define STATUS_CHECK_SLOWBLINK_ON_TICKS 700
+
+static int nodata = 50;
 
 void status_indicator() {
-  int off = digitalRead(12);
-
+  static unsigned int ctr = 0;
+  ctr++;
+  static int hello_frame_blinky = 0;
+  
   //Serial.println(off);
- 
-  if(off) {
-    //DISABLE pin
-    if(disabled != 1) {
-      //Serial.println(F("disable"));
-      Timer3.stop();
-      Timer3.initialize(100);
-      Timer3.start();
-      Timer3.pwm(9, 5);
+  if(nodata >= 5 && ctr % 20 == 0) {
+     if(led.r.val > 2) led.r.val -=1;
+     if(led.g.val > 2) led.g.val -=1;
+     if(led.b.val > 2) led.b.val -=1;
+     
+     if(led.r.val < 2) led.r.val = 2;
+     if(led.g.val < 2) led.g.val = 2;
+     if(led.b.val < 2) led.b.val = 2;
 
-      set_rgb(0,0,0);
-    }
-    disabled = 1;
+     set_rgb(led.r.val, led.g.val, led.b.val);
   }
-  else {
-    if(disabled != 0) {
-      //Serial.println(F("enable"));
-      Timer3.stop();
-      Timer3.initialize(1000000);
-      Timer3.start();
-      Timer3.pwm(9, 256);
 
-      //set_rgb(2,2,2);
-    }
-    disabled = 0;
-    
+  if(ctr%STATUS_CHECK_TICKS==0) {
+    /*
+    Serial.print(F("status check: ctr: "));
+    Serial.print(ctr);
+    Serial.print(F(", nodata: "));
+    Serial.print(nodata);
+    Serial.print(F(", hello_frame: "));
+    Serial.print(usb_state.hello_frame);
+    Serial.print(F(", rgb_frame: "));
+    Serial.println(usb_state.rgb_frame);
+    */
     if(usb_state.rgb_frame) {
-        Timer3.setPwmDuty(9, 1022);
+      Timer3.setPwmDuty(9, 400);
+      usb_state.rgb_frame = 0;
+      nodata = 0;
     }
     else if(usb_state.hello_frame) {
-      Timer3.setPwmDuty(9, 512);
+      Timer3.setPwmDuty(9, 100);
+      usb_state.hello_frame = 0;
+      nodata = 0;
+      hello_frame_blinky = 1;
     }
     else {
-      Timer3.setPwmDuty(9, 100);
+      if(nodata >= 5) {
+        Timer3.setPwmDuty(9, 100);
+      }
+      else {
+        nodata++;
+      }
     }
+ }
+ else if(ctr%STATUS_CHECK_TICKS == STATUS_CHECK_BLINK_ON_TICKS) {
+  if(nodata >= 5) {
+    //Serial.println(F("set to 0 on accound of nodata"));
+    Timer3.setPwmDuty(9, 0);
   }
+  else if(hello_frame_blinky) {
+    //Serial.println(F("set to 1 on accound of hello"));
+    Timer3.setPwmDuty(9, 300);
+    hello_frame_blinky = 0;
+  }
+ }
 }
 
 void setup(void)
 { 
-
   //Serial.begin(9600);
   
-  Timer1.initialize(500);
+  Timer1.initialize(200);
   Timer1.start();
 
+  Timer3.initialize(1000);
+  Timer3.pwm(9, 950);
   Timer3.attachInterrupt(status_indicator);
-  status_indicator();
+  //status_indicator();
   
   led.r.pin = 15;
   led.g.pin = 14;
@@ -194,7 +220,7 @@ void handleUsbHID(void) {
   
   static byte buffer[64];
   
-  int n = RawHID.recv(buffer, 0); // 0 timeout = do not wait
+  int n = RawHID.recv(buffer, 1);
   if (n > 0) {
 
     /*
@@ -207,9 +233,6 @@ void handleUsbHID(void) {
     Serial.print(F(","));
     Serial.println((uint8_t)buffer[3]);
     */
-    
-    //buffer[0] is always 42. something about it not being 0 is important...
-
     if(buffer[0]==42) { //rgb frame
       set_rgb(buffer[1],buffer[2],buffer[3]);
       usb_state.hello_frame=0;
@@ -220,7 +243,7 @@ void handleUsbHID(void) {
       usb_state.rgb_frame=0;
       usb_state.hello_frame=1;
     }
-    
+    nodata = 0;
     //toggle_status();
   }
 }
@@ -230,24 +253,6 @@ static uint8_t use_cie1931 = 0;
 
 void loop(void)
 {
-  if(disabled) {
-    delay(200);
-  }
-  else {
-    handleUsbHID();
-  }
-
-  /*
-  if(use_cie1931) {
-    analogWrite(led.r.pin, cie1931[led.r.val]);
-    analogWrite(led.g.pin, cie1931[led.g.val]);
-    analogWrite(led.b.pin, cie1931[led.b.val]);
-  }
-  else {
-    analogWrite(led.r.pin, led.r.val);
-    analogWrite(led.g.pin, led.g.val);
-    analogWrite(led.b.pin, led.b.val);
-  }
-  */
+  handleUsbHID();
 }
 

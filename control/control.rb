@@ -30,6 +30,7 @@ load opt[:config_file]
 $conf = RubyConf.flashist
 
 class Flashist #don't punch me bro
+  include Celluloid
   def initialize
     init_device
   end
@@ -46,13 +47,13 @@ class Flashist #don't punch me bro
     end
   end
   
-  def send_raw(*args)
+  
+  def send_raw_bytes(*args)
     init_device unless @dev
     begin
-      @dev.write(args) if @dev
+      @dev.write(args, 100) if @dev
     rescue RawHID::RawHIDError => e
       puts "device write failed! exception #{e} #{e.class} code #{e.code}"
-      puts "HEYOO"
       @dev.close if @dev
       puts "closed"
       @dev=nil
@@ -62,8 +63,13 @@ class Flashist #don't punch me bro
     end
   end
   
+  private :send_raw_bytes
+  
+  def send_raw(*args)
+    self.async.send_raw_bytes(*args)
+  end
   def send_rgb(rgb)
-    send_raw(42, (rgb.r*255).to_i, (rgb.g*255).to_i, (rgb.b*255).to_i)
+    self.async.send_raw(42, (rgb.r*255).to_i, (rgb.g*255).to_i, (rgb.b*255).to_i)
   end
   def send_hello
     send_raw ">"
@@ -421,7 +427,7 @@ class Control
     @flashist = Flashist.new
     @s2rgb = SpectrumToRGB.new
     @wavegen = Wavegen.new @flashist
-    @idle = false
+    @idle = true
     
     @cava = CavaReader.new $conf.cava_fifo, @s2rgb, @flashist
     @cava.on_idle do
@@ -438,7 +444,7 @@ class Control
   
   def ping_timer
     while true do
-      Celluloid.sleep(1)
+      Celluloid.sleep(2)
       if @idle then
         #ping device
         #puts "ping"
