@@ -19,6 +19,7 @@ require "celluloid/logger"
 require "rawhid"
 require "erb"
 
+require "redis"
 require "json"
 
 require 'reel/rack'
@@ -301,21 +302,16 @@ end
 class ControlServer
   attr_accessor :app
 
-  def initialize(opt={})
-    @opt = opt || {}
-    @opt[:Port] ||= $conf.server_port
+  def initialize(control)
+    @opt = {}
+    @opt[:Port] = $conf.server_port || 8080
     
-    @s2rgb = opt[:s2rgb]
-    @wavegen = opt[:wavegen]
+    @control = control
     
     @index = ERB.new(File.read File.join(__dir__, 'web', 'index.erb'))
     @mootools = File.read File.join(__dir__, 'web', 'moo.js')
     if block_given?
       opt[:callback]=Proc.new
-    end
-    
-    def gather_info 
-      {active: @s2rgb.get_info, idle: @wavegen.get_info }
     end
     
     def set_maybe(req, obj, param, kind = nil)
@@ -342,25 +338,18 @@ class ControlServer
       req = Rack::Request.new(env)
       
       if req.request_method == "POST"
-        set_maybe req, @s2rgb, "peaks_measure_count", :int
-        set_maybe req, @s2rgb, "amplification", :int
-        set_maybe req, @s2rgb, "colorscale", :float
-        set_maybe req, @s2rgb, "colordrift", :float
-        set_maybe req, @s2rgb, "redblue_shift", :float
-        
-        set_maybe req, @wavegen, "color_cycling_speed", :float
-        set_maybe req, @wavegen, "current_color"
-        set_maybe req, @wavegen, "brightness_cycling_speed", :float
-        set_maybe req, @wavegen, "current_brightness", :float
-        
+        saved_params = @control.set_runtime_params req.params
         headers["Content-Type"] = "text/json"
-        resp << JSON.generate(gather_info)
+        resp << JSON.generate(saved_params)
       else
         case env["REQUEST_PATH"] || env["PATH_INFO"]
         when "/"
+          runtime_params = @control.get_runtime_params
+          active = runtime_params[:active]
+          idle = runtime_params[:idle]
           resp << @index.result(binding)
         when "/info"
-          resp << JSON.generate(gather_info)
+          resp << JSON.generate(@control.get_runtime_params)
           headers["Content-Type"]="text/json"
         when "/moo.js"
           resp << @mootools
@@ -370,10 +359,6 @@ class ControlServer
           resp << (env["REQUEST_PATH"] || env["PATH_INFO"])
           resp << " not found"
         end
-      end
-
-      if @opt[:callback]
-        @opt[:callback].call(env)
       end
 
       headers["Content-Length"]=resp.join("").length.to_s unless chunked
@@ -498,7 +483,18 @@ class Control
       @wavegen.stop
       true
     end
-    @server = ControlServer.new(s2rgb: @s2rgb, wavegen: @wavegen)
+    @server = ControlServer.new(self)
+    if $conf.redis
+      @redis = Redis.new url: $conf.redis
+      runtime_json = @redis.get($conf.redis_key || "flashist:runtime") rescue nil
+      if runtime_json
+        rt = JSON.parse(runtime_json) rescue nil
+        if rt then
+          set_runtime_params rt['active'] if rt['active']
+          set_runtime_params rt['idle'] if rt['idle']
+        end
+      end
+    end
   end
   
   def ping_timer
@@ -523,6 +519,52 @@ class Control
     #drop pidfile
     File.write($conf.pidfile, Process.pid)
   end
+  
+  def set_maybe(params, obj, param, kind = nil)
+    if params[param]
+      case kind
+      when :float
+        val = params[param].to_f
+      when :int
+        val = params[param].to_i
+      else
+        val = params[param]
+      end
+      obj.send"#{param}=", val
+    end
+  end
+  private :set_maybe
+  
+  def set_runtime_params(params)
+    set_maybe params, @s2rgb, "active_on", :int
+    set_maybe params, @s2rgb, "peaks_measure_count", :int
+    set_maybe params, @s2rgb, "amplification", :int
+    set_maybe params, @s2rgb, "colorscale", :float
+    set_maybe params, @s2rgb, "colordrift", :float
+    set_maybe params, @s2rgb, "redblue_shift", :float
+    
+    set_maybe params, @wavegen, "idle_on", :int
+    set_maybe params, @wavegen, "color_cycling_speed", :float
+    set_maybe params, @wavegen, "current_color"
+    set_maybe params, @wavegen, "brightness_cycling_speed", :float
+    set_maybe params, @wavegen, "current_brightness", :float
+    set_maybe params, @wavegen, "max_idle_brightness", :float
+    set_maybe params, @wavegen, "min_idle_brightness", :float
+    save_runtime_params
+  end
+  
+  def save_runtime_params
+    params = get_runtime_params
+    if @redis
+      @redis.set($conf.redis_key || "flashist:runtime",  JSON.generate(params)) rescue nil
+    end
+  end
+  
+  def get_runtime_params
+    {active: @s2rgb.get_info, idle: @wavegen.get_info }
+  end
+  
+  
 end
 
 control = Control.new

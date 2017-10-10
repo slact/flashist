@@ -2,7 +2,7 @@
 source 'https://rubygems.org'
 gem 'celluloid'
 gem "ruby-conf"
-
+gem "redis"
 gem 'rawhid'
 
 #gem "HDRHistogram"

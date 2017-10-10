@@ -65,7 +65,7 @@
         <p class="info">
           The less smoothing, the more varied the brightness
         </p>
-        <input name='peaks_measure_count' list='smoothings' type='range' min='1' max='15' value='<%=@s2rgb.peaks_measure_count%>' />
+        <input name='peaks_measure_count' list='smoothings' type='range' min='1' max='15' value='<%=active[:peaks_measure_count]%>' />
         <datalist id='smoothings'>
           <option value='1' label='spiky' />
           <option value='4' label='not too spiky' />
@@ -77,7 +77,7 @@
         <p class="info">
           Boost the brightness
         </p>
-        <input name='amplification' list='amplifications' type='range' min='1' max='14' value='<%=@s2rgb.amplification%>' />
+        <input name='amplification' list='amplifications' type='range' min='1' max='14' value='<%=active[:amplification]%>' />
         <datalist id='amplifications'>
           <option value='1' label='None' />
           <option value='2' label='Just a bit' />
@@ -92,7 +92,7 @@
         <p class="info">
           How much the color depends on dominant pitch
         </p>
-        <input name='colorscale' type='range' list="colorscales" min='1' max='3' value='<%=@s2rgb.colorscale%>' step='0.1' />
+        <input name='colorscale' type='range' list="colorscales" min='1' max='3' value='<%=active[:colorscale]%>' step='0.1' />
         <datalist id='colorscales'>
           <option value='1' label='normal' >
           <option value='1.2' label='increased' >
@@ -108,7 +108,7 @@
         <p class="info">
           How fast colors cycle around regardless of pitch
         </p>
-        <input name='colordrift' list='colordrifts' type='range' min='0' max='0.03' value='<%=@s2rgb.colordrift%>' step='0.00001' />
+        <input name='colordrift' list='colordrifts' type='range' min='0' max='0.03' value='<%=active[:colordrift]%>' step='0.00001' />
         <datalist id='colordrifts'>
           <option value='0' label='none' />
           <option value='0.001' label='slow' />
@@ -122,7 +122,7 @@
         <p class="info">
           for setting the mood right
         </p>
-        <input name='redblue_shift' list='temps' type='range' min='-1' max='1' value='<%=@s2rgb.redblue_shift%>' step='0.01' />
+        <input name='redblue_shift' list='temps' type='range' min='-1' max='1' value='<%=active[:redblue_shift]%>' step='0.01' />
         <datalist id='temps'>
           <option value='-1' label='the bluest' />
           <option value='-0.5' label='kind of blue' />
