@@ -40,6 +40,7 @@ $conf = RubyConf.flashist
 
 class Flashist #don't punch me bro
   include Celluloid
+  
   def initialize
     init_device
   end
@@ -49,13 +50,19 @@ class Flashist #don't punch me bro
     begin
       @dev = RawHID.new(*$conf.device)
     rescue RawHID::RawHIDError => e
-      puts "flashist device couldn't be opened"
+      #puts "flashist device couldn't be opened"
     end
     if @dev
       puts "flashist device connected"
     end
   end
   
+  def fade_start(sec)
+    @fade_time = sec
+    @fade_start = Time.now.to_f
+    @fade_from = @last_rgb_frame || Color::RGB.new(0,0,0)
+    #puts "fade from #{@fade_from.r}, #{@fade_from.g}, #{@fade_from.b} for #{sec} sec"
+  end
   
   def send_raw_bytes(*args)
     init_device unless @dev
@@ -78,7 +85,27 @@ class Flashist #don't punch me bro
     self.async.send_raw_bytes(*args)
   end
   def send_rgb(rgb)
-    self.async.send_raw(42, (rgb.r*255).to_i, (rgb.g*255).to_i, (rgb.b*255).to_i)
+    @last_rgb_frame = rgb
+    if @fade_start
+      t = (Time.now.to_f - @fade_start).to_f/@fade_time
+      if t > 1
+        @fade_start = nil
+        t = 1.0
+      end
+      t=(1-t)
+      dr = (@fade_from.r - rgb.r)*t
+      dg = (@fade_from.g - rgb.g)*t
+      db = (@fade_from.b - rgb.b)*t 
+      r=(rgb.r + dr)*255
+      g=(rgb.g + dg)*255
+      b=(rgb.b + db)*255
+      #puts "fading, t=#{t}, [#{dr}]#{r.to_i},[#{dg}]#{g.to_i} [#{db}]#{b.to_i}"
+    else
+      r = rgb.r*255.to_i
+      g = rgb.g*255.to_i
+      b = rgb.b*255.to_i
+    end
+    self.async.send_raw(42, r.to_i, g.to_i, b.to_i)
   end
   def send_hello
     send_raw ">"
@@ -100,7 +127,7 @@ class SpectrumToRGB
   end
   
   def idle_max_level
-    @floor + 3
+    @floor + 2
   end
   
   def get_info
@@ -203,16 +230,20 @@ class CavaReader
   def receive_line(l)
     bars = l.strip.split " "
     bars.map! &:to_i
-    if !@active then
-      @active = true
-      @on_active.call if @on_active
-    end
     rgb = @s2rgb.spectral_center_of_mass(bars)
-    maxidle = @s2rgb.idle_max_level
-    if rgb.r > maxidle &&  rgb.g > maxidle && rgb.b > maxidle
+    maxidle = @s2rgb.idle_max_level.to_f/255
+    
+    #puts "#{(rgb.r*255).to_i} #{(rgb.g*255).to_i} #{(rgb.b*255).to_i}, max: #{(maxidle *255).to_i}. active: #{@active}"
+    
+    if rgb.r > maxidle || rgb.g > maxidle || rgb.b > maxidle
       @framecount += 1
+      if !@active then
+        puts "now active..."
+        @active = true
+        @on_active.call if @on_active
+      end
     end
-    @flashy.send_rgb rgb
+    @flashy.send_rgb rgb unless !@active
   end
   
   def initialize(path, s2rgb, flashy)
@@ -254,8 +285,10 @@ class CavaReader
     begin
       @fifo = File.open(@fifo_path, 'r+')
     rescue Errno::ENOENT => e
-      puts "cava fifo: file not found?..."
-      #binding.pry
+      puts "cava fifo: can't open #{@fifo_path}"
+      puts "make the file"
+      system "mkfifo #{@fifo_path}"
+      puts @fifo
     end
   end
   
@@ -456,10 +489,12 @@ class Control
     @cava = CavaReader.new $conf.cava_fifo, @s2rgb, @flashist
     @cava.on_idle do
       @idle = true
+      @flashist.fade_start 4
       @wavegen.run
       true
     end
     @cava.on_active do
+      @flashist.fade_start 2
       @wavegen.stop
       true
     end
