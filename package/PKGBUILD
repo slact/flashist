@@ -1,5 +1,5 @@
 pkgname=flashist-git
-pkgver=30.724fdf4
+pkgver=31.71988c2
 pkgrel=1
 epoch=
 pkgdesc=""
@@ -7,7 +7,7 @@ arch=('i686' 'x86_64')
 url=""
 license=('MIT')
 groups=()
-depends=('cava' 'ruby' 'ruby-bundler' 'pulseaudio')
+depends=('cava' 'ruby' 'ruby-bundler' 'pulseaudio' 'redis')
 backup=( 'etc/flashist/control.conf' 'etc/flashist/cava.conf')
 source=("git+https://github.com/slact/flashist.git")
 

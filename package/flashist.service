@@ -1,6 +1,7 @@
 [Unit]
 Description=Flashist RGB LED Party (generator and control)!!
 Requires=flashist-cava.service
+Requires=redis.service
 
 [Service]
 Type=simple
