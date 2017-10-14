@@ -336,12 +336,12 @@ class ControlServer
       chunked = false
       
       req = Rack::Request.new(env)
-      
       if req.request_method == "POST"
         saved_params = @control.set_runtime_params req.params
         headers["Content-Type"] = "text/json"
         resp << JSON.generate(saved_params)
       else
+        headers["Cache-Control"] = "max-age=310"
         case env["REQUEST_PATH"] || env["PATH_INFO"]
         when "/"
           runtime_params = @control.get_runtime_params
@@ -351,9 +351,11 @@ class ControlServer
         when "/info"
           resp << JSON.generate(@control.get_runtime_params)
           headers["Content-Type"]="text/json"
+          headers["Cache-Control"] = "private"
         when "/moo.js"
           resp << @mootools
           headers["Content-Type"]="text/javascript"
+          headers["Cache-Control"] = "public"
         else
           code = 404
           resp << (env["REQUEST_PATH"] || env["PATH_INFO"])
