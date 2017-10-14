@@ -481,6 +481,7 @@ class Control
       true
     end
     @cava.on_active do
+      @idle = false
       @flashist.fade_start 2
       @wavegen.stop
       true
