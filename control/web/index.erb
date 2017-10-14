@@ -1,32 +1,64 @@
-<html>
+<!DOCTYPE html>
+<html lang='en'>
   <head>
+    <title>Light Control Panel</title>
+    <meta charset='utf-8'>
     <script type='text/javascript' src='moo.js'></script>
     <style type="text/css">
       form {
-        max-width: 500px;
+        /*max-width: 700px;*/
         border: 1px solid #ccc;
         position: relative;
         top: 0;
+        margin: 0.5em;
+        margin-bottom: 1em;
+        padding: 0.5em;
+        border-radius: 2em;
       }
-      form label {
+      form.selected {
+        border: 1px solid #68895a;
+        background: #cbffb4;
+      }
+      form label, form div.label {
         margin-bottom: 0.5em;
         display: block;
         border-radius: 2em;
         background: #f0f4f0;
         border: 4px solid #cdc;
         padding: 0.5em;
+        clear: both;
+        overflow: auto;
       }
+      
+      form.selected label {
+        background: #d7f0d7;
+        border: 4px solid #9bad9b;
+      }
+      
       input[type=range] {
         display: block;
         width:90%;
         margin: auto;
         margin-bottom: 0.5em;
       }
+      input[type=range].half {
+        display: block;
+        float: left;
+        width: 45%;
+      }
+      
       div.rangeInfo {
         display: block;
         margin-right: 1em;
         text-align: right;
         color: #CA3;
+        clear: both;
+        overflow: auto;
+      }
+      label span.info {
+        display: block;
+        margin-top: 0.7em;
+        margin-bottom: 0.7em;
       }
       .info {
         font-size: 70%;
@@ -62,36 +94,36 @@
       <p class="info">When the music's playing</p>
       <label>
         Peak Smoothing
-        <p class="info">
+        <span class="info">
           The less smoothing, the more varied the brightness
-        </p>
+        </span>
         <input name='peaks_measure_count' list='smoothings' type='range' min='1' max='15' value='<%=active[:peaks_measure_count]%>' />
         <datalist id='smoothings'>
-          <option value='1' label='spiky' />
-          <option value='4' label='not too spiky' />
-          <option value='10' label='smooth and low' />
+          <option value='1' label='spiky'></option>
+          <option value='4' label='not too spiky'></option>
+          <option value='10' label='smooth and low'></option>
         </datalist>
       </label>
       <label>
         Amplification
-        <p class="info">
+        <span class="info">
           Boost the brightness
-        </p>
+        </span>
         <input name='amplification' list='amplifications' type='range' min='1' max='14' value='<%=active[:amplification]%>' />
         <datalist id='amplifications'>
-          <option value='1' label='None' />
-          <option value='2' label='Just a bit' />
-          <option value='5' label='Might be too bright' />
-          <option value='11' label='This one goes to 11' />
-          <option value='11' label='Way past overdrive' />
+          <option value='1' label='None'></option>
+          <option value='2' label='Just a bit'></option>
+          <option value='5' label='Might be too bright'></option>
+          <option value='11' label='This one goes to 11'></option>
+          <option value='12' label='Way past overdrive'></option>
         </datalist>
       </label>
       
       <label>
         Color responsiveness
-        <p class="info">
+        <span class="info">
           How much the color depends on dominant pitch
-        </p>
+        </span>
         <input name='colorscale' type='range' list="colorscales" min='1' max='3' value='<%=active[:colorscale]%>' step='0.1' />
         <datalist id='colorscales'>
           <option value='1' label='normal' >
@@ -105,33 +137,33 @@
       
       <label>
         Color drift
-        <p class="info">
+        <span class="info">
           How fast colors cycle around regardless of pitch
-        </p>
+        </span>
         <input name='colordrift' list='colordrifts' type='range' min='0' max='0.03' value='<%=active[:colordrift]%>' step='0.00001' />
         <datalist id='colordrifts'>
-          <option value='0' label='none' />
-          <option value='0.001' label='slow' />
-          <option value='0.01' label='fast' />
-          <option value='0.03' label='double rainbow' />
+          <option value='0' label='none'></option>
+          <option value='0.001' label='slow'></option>
+          <option value='0.01' label='fast'></option>
+          <option value='0.03' label='double rainbow'></option>
         </datalist>
       </label>
       
       <label>
         Color Temperature
-        <p class="info">
+        <span class="info">
           for setting the mood right
-        </p>
+        </span>
         <input name='redblue_shift' list='temps' type='range' min='-1' max='1' value='<%=active[:redblue_shift]%>' step='0.01' />
         <datalist id='temps'>
-          <option value='-1' label='the bluest' />
-          <option value='-0.5' label='kind of blue' />
-          <option value='-0.1' label='a hint of blue' />
-          <option value='0' label='neutral' />
-          <option value='0.1' label='a hint of red' />
-          <option value='0.5' label='reddish' />
-          <option value='0.9' label='martial' />
-          <option value='1' label='red alert' />
+          <option value='-1' label='the bluest'></option>
+          <option value='-0.5' label='kind of blue'></option>
+          <option value='-0.1' label='a hint of blue'></option>
+          <option value='0' label='neutral'></option>
+          <option value='0.1' label='a hint of red'></option>
+          <option value='0.5' label='reddish'></option>
+          <option value='0.9' label='martial'></option>
+          <option value='1' label='red alert'></option>
         </datalist>
       </label>
     </form>
@@ -141,39 +173,47 @@
       <p class="info">when the music's over</p>
       <label>
         Hue cycling speed
-        <p class="info"></p>
+        <span class="info"></span>
         <input name="color_cycling_speed" type="range" list="color_cycling_speeds" min='0' max='0.1' step="0.0001" />
-        <datalist id="color_cycling_speeds" />
-          <option value="0" label="none" />
-          <option value="0.0005" label="imperceptible" />
-          <option value="0.001" label="molasses" />
-          <option value="0.003" label="lowrider" />
-          <option value="0.007" label="slow jam" />
-          <option value="0.02" label="noticeable" />
-          <option value="0.05" label="attention-grabbing" />
-          <option value="0.07" label="wacky" />
-          <option value="0.1" label="rainbow trout feeding frenzy" />
+        <datalist id="color_cycling_speeds">
+          <option value="0" label="none"></option>
+          <option value="0.0005" label="imperceptible"></option>
+          <option value="0.001" label="molasses"></option>
+          <option value="0.003" label="lowrider"></option>
+          <option value="0.007" label="slow jam"></option>
+          <option value="0.02" label="noticeable"></option>
+          <option value="0.05" label="attention-grabbing"></option>
+          <option value="0.07" label="wacky"></option>
+          <option value="0.1" label="rainbow trout feeding frenzy"></option>
         </datalist>
       </label>
       <label>
         Brightness cycling speed
-        <p class="info"></p>
+        <span class="info"></span>
         <input name="brightness_cycling_speed" type="range" list="brightness_cycling_speeds" min='0' max='0.08' step="0.0005" />
-        <datalist id="brightness_cycling_speeds" />
-          <option value="0" label="none" />
-          <option value="0.0001" label="imperceptible" />
-          <option value="0.001" label="creeping" />
-          <option value="0.005" label="gradual" />
-          <option value="0.01" label="noticeable" />
-          <option value="0.06" label="kinda fast" />
-          <option value="0.08" label="attention" />
+        <datalist id="brightness_cycling_speeds">
+          <option value="0" label="none"></option>
+          <option value="0.0001" label="imperceptible"></option>
+          <option value="0.001" label="creeping"></option>
+          <option value="0.005" label="gradual"></option>
+          <option value="0.01" label="noticeable"></option>
+          <option value="0.06" label="kinda fast"></option>
+          <option value="0.08" label="attention"></option>
         </datalist>
       </label>
+      <!--
+      <div class="label">
+        Brightness range
+        <span class="info">the wider apart the sliders, the more the brightness varies</span>
+        <input name="brightness_cycling_min" class="half" type="range" min="0" max="0.5" step="0.01" />
+        <input name="brightness_cycling_max" class="half" type="range" min="0.5" max="1" step="0.01" />
+      </div>
       <label>
-        Current color
-        <p class="info">Turn down cycling if you want this color to be constant</p>
-        <input name="current_color" type="color" />
+        Fixed color
+        <span class="info">Setting this disables cycling hue and brightness</span>
+        <input class="current_color" type="color" />
       </label>
+    -->
     </form>
     <script type='text/javascript'>
       var sendOnChangeEnabled = true;
@@ -183,10 +223,18 @@
         
         (["active", "idle"]).each(function(kind) {
           var form = document.getElement('form#' + kind);
+          if(data["state"] == kind) {
+            form.addClass("selected");
+          }
+          else {
+            form.removeClass("selected");
+          }
           Object.each(data[kind], function(val, name) {
             var el = form.getElement('input[name=' + name + ']');
             if(!el) return;
-            el.set('value', val);
+            if(el.get('value') != val) {
+              el.set('value', val);
+            }
           });
         })
         
@@ -194,7 +242,9 @@
       }
     
       function applyRangeLabels(el) {
-        var opt = el.retrieve('list').getChildren()
+        var lst = el.retrieve('list');
+        if(!lst) return;
+        var opt = lst.getChildren();
         var i;
         var curLbl = false;
         var prev = false;

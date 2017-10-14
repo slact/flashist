@@ -563,7 +563,7 @@ class Control
   end
   
   def get_runtime_params
-    {active: @s2rgb.get_info, idle: @wavegen.get_info }
+    {active: @s2rgb.get_info, idle: @wavegen.get_info, state: @idle ? "idle" : "active" }
   end
   
   
