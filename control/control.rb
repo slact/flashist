@@ -86,7 +86,6 @@ class Flashist #don't punch me bro
     self.async.send_raw_bytes(*args)
   end
   def send_rgb(rgb)
-    @last_rgb_frame = rgb
     if @fade_start
       t = (Time.now.to_f - @fade_start).to_f/@fade_time
       if t > 1
@@ -106,6 +105,7 @@ class Flashist #don't punch me bro
       g = rgb.g*255.to_i
       b = rgb.b*255.to_i
     end
+    @last_rgb_frame = rgb
     self.async.send_raw(42, r.to_i, g.to_i, b.to_i)
   end
   def send_hello
@@ -310,6 +310,7 @@ class ControlServer
     
     @index = ERB.new(File.read File.join(__dir__, 'web', 'index.erb'))
     @mootools = File.read File.join(__dir__, 'web', 'moo.js')
+    @jscolor = File.read File.join(__dir__, 'web', 'jscolor.min.js')
     if block_given?
       opt[:callback]=Proc.new
     end
@@ -356,6 +357,10 @@ class ControlServer
           resp << @mootools
           headers["Content-Type"]="text/javascript"
           headers["Cache-Control"] = "public"
+        when "/jscolor.min.js"
+          resp << @jscolor
+          headers["Content-Type"]="text/javascript"
+          headers["Cache-Control"] = "public"
         else
           code = 404
           resp << (env["REQUEST_PATH"] || env["PATH_INFO"])
@@ -394,32 +399,40 @@ end
 
 class Wavegen
   include Celluloid
-  attr_accessor :color_cycling_speed, :brightness_cycling_speed
+  attr_accessor :color_cycling_speed, :brightness_cycling_speed, :brightness_cycling_min, :brightness_cycling_max
   def initialize(flashist)
     @flashist = flashist
     @color_cycling_speed = 0.003
     @x = 0
-    @min = 0 #2.0/255
-    @a = @min
+    @brightness_cycling_min = 0.0
+    @brightness_cycling_max = 1.0
+    @a = 0
     @brightness_cycling_speed = 0.001
-    @current_brightness = @min
+    @current_brightness = 0
+    
   end
   
   def get_info
     {
       color_cycling_speed: @color_cycling_speed,
-      current_color: @current_color ? @current_color.html : "#101010",
-      brightness_cycling_speed: @brightness_cycling_speed
+      static_color: @static_color ? @static_color.html : false,
+      brightness_cycling_speed: @brightness_cycling_speed,
+      brightness_cycling_min: @brightness_cycling_min,
+      brightness_cycling_max: @brightness_cycling_max
     }
   end
 
-  def current_color=(val)
+  def static_color=(val)
+    prev_static_color = @static_color
     begin
       newcolor = Color::RGB.by_css(val)
     rescue Exception => e
       newcolor = nil
     end
-    @current_color = newcolor if newcolor
+    @static_color = newcolor
+    if prev_static_color != @static_color
+      @flashist.fade_start 1
+    end
   end
   
   def wave(x)
@@ -428,28 +441,29 @@ class Wavegen
   
   def generate
     while @running do
-      Celluloid.sleep(1.0/20)
-      rgb = @color_cycling_speed > 0 ? Color::RGB.new : @current_color
-      if rgb.frozen?
-        rgb = Color::RGB.new(rgb.r, rgb.g, rgb.b)
-      end
-      if @brightness_cycling_speed > 0
+      Celluloid.sleep(1.0/30)
+      if @static_color
+        rgb = @static_color
+      else
+        rgb = @color_cycling_speed > 0 ? Color::RGB.new : @current_color
+        if rgb.frozen?
+          rgb = Color::RGB.new(rgb.r, rgb.g, rgb.b)
+        end
         a = wave(@a)
         @current_brightness = a
+        rgb.r = wave(@x) * a
+        rgb.g = wave(@x+1.0/3) * a
+        rgb.b = wave(@x+2.0/3) * a
+        if @brightness_cycling_min > 0 || @brightness_cycling_max < 1
+          range = @brightness_cycling_max.to_f - @brightness_cycling_min
+          rgb.r = rgb.r * range + @brightness_cycling_min
+          rgb.g = rgb.g * range + @brightness_cycling_min
+          rgb.b = rgb.b * range + @brightness_cycling_min
+        end
+        @current_color = rgb
+        @x+=@color_cycling_speed
+        @a+=@brightness_cycling_speed
       end
-      if @color_cycling_speed > 0
-        rgb.r = wave(@x) * a + @min
-        rgb.g = wave(@x+1.0/3) * a + @min
-        rgb.b = wave(@x+2.0/3) * a + @min
-      elsif @brightness_cycling_speed > 0
-        rgb.r = rgb.r * a
-        rgb.g = rgb.g * a
-        rgb.b = rgb.b * a
-      end
-      @current_color = rgb
-      @x+=@color_cycling_speed
-      @a+=@brightness_cycling_speed
-      
       @flashist.send_rgb rgb
     end
   end
@@ -546,13 +560,17 @@ class Control
     set_maybe params, @s2rgb, "colordrift", :float
     set_maybe params, @s2rgb, "redblue_shift", :float
     
-    set_maybe params, @wavegen, "idle_on", :int
-    set_maybe params, @wavegen, "color_cycling_speed", :float
-    set_maybe params, @wavegen, "current_color"
-    set_maybe params, @wavegen, "brightness_cycling_speed", :float
-    set_maybe params, @wavegen, "current_brightness", :float
-    set_maybe params, @wavegen, "max_idle_brightness", :float
-    set_maybe params, @wavegen, "min_idle_brightness", :float
+    if params["static_color_enabled"]
+      set_maybe params, @wavegen, "static_color"
+    else
+      set_maybe params, @wavegen, "idle_on", :int
+      set_maybe params, @wavegen, "color_cycling_speed", :float
+      set_maybe params, @wavegen, "brightness_cycling_speed", :float
+      set_maybe params, @wavegen, "current_brightness", :float
+      set_maybe params, @wavegen, "brightness_cycling_min", :float
+      set_maybe params, @wavegen, "brightness_cycling_max", :float
+      @wavegen.static_color=false
+    end
     save_runtime_params
   end
   
@@ -561,6 +579,7 @@ class Control
     if @redis
       @redis.set($conf.redis_key || "flashist:runtime",  JSON.generate(params)) rescue nil
     end
+    params
   end
   
   def get_runtime_params
