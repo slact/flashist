@@ -166,11 +166,11 @@ class SpectrumToRGB
     s = 0.8
     l = max_sum.to_f / (@peaks_measure_count * 4096)
     l = l * @amplification
-    l = 1.0 if l > 1
+    l = 0.999 if l >= 0.999 # dunno why, but l=1.0 translates to black RGB
     
     #puts [h.to_i, s, l.round(5)].to_s
     
-    hsl = Color::HSL.new(h,s*100,l*100)
+    hsl = Color::HSL.new(h,s*100.0,l*100.0)
     rgb = hsl.to_rgb
     
     if rgb.frozen? && @redblue_shift
@@ -178,22 +178,25 @@ class SpectrumToRGB
     end
     
     if @floor > 0
+      range = 255 - @floor
       incr = @floor.to_f/255
-      rgb.r = [rgb.r+incr, 1].min
-      rgb.g = [rgb.g+incr, 1].min
-      rgb.b = [rgb.b+incr, 1].min
+      rgb.r = rgb.r * range + incr
+      rgb.g = rgb.g * range + incr
+      rgb.b = rgb.b * range + incr
     end
     
     if @redblue_shift > 0
       swap = rgb.b * @redblue_shift.abs
-      rgb.b = [rgb.b - swap, 0].max
-      rgb.r = [rgb.r + swap, 1].min
+      rgb.b = [rgb.b - swap, 0.0].max
+      rgb.r = [rgb.r + swap, 1.0].min
     elsif @redblue_shift < 0
       swap = rgb.r * @redblue_shift.abs
       rgb.r = [rgb.r - swap, 0].max
       rgb.b = [rgb.r + swap, 1].min
     end
     
+    #puts [rgb.r.round(4), rgb.g.round(4), rgb.b.round(4)].to_s
+
     return rgb
   end
 end
@@ -497,6 +500,7 @@ class Control
     @cava.on_active do
       @idle = false
       @flashist.fade_start 2
+      @wavegen.static_color=false
       @wavegen.stop
       true
     end
