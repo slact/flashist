@@ -84,12 +84,40 @@
         width: 60px;
         cursor: pointer;
       }
+      
+      .error {
+        position: fixed;
+        width:100%;
+        height:100%;
+        top:0;
+        left: 0;
+        background: rgba(200, 30, 30, 0.5);
+      }
+      
+      .error .message {
+        display: block;
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        border: 3px solid #411;
+        border-radius: 1em;
+        background: #fdd;
+        font-size: 200%;
+        padding: 1em;
+        color: #411;
+      }
+      
+      .hidden {
+        display: none !important;
+      }
 
       
     </style>
     <meta content="width=device-width, initial-scale=1" name="viewport" />
   </head>
   <body>
+  
     <form id="active" method='post' action='/active'>
       <h2>Active Settings</h2>
       <p class="info">When the music's playing</p>
@@ -213,10 +241,26 @@
         <span class="info">Setting this disables cycling hue and brightness</span>
         <input type="checkbox" name="static_color_enabled" value="1" />
         <input name="static_color" class="jscolor" value="click to pick color" />
-      </label>
+      </div>
     </form>
+    
+    <div class="error hidden" id="error">
+      <div class="message"></div>
+    </div>
+    
     <script type='text/javascript'>
       var sendOnChangeEnabled = true;
+      
+      function errorOverlay(msg) {
+        var el = document.getElement('#error');
+        if(msg) {
+          el.getElement("div").set('text', msg);
+          el.removeClass("hidden");
+        }
+        else {
+          el.addClass("hidden");
+        }
+      }
       
       function applyJSONInfo(data) {
         sendOnChangeEnabled = false;
@@ -308,11 +352,20 @@
       document.addEvent('domready', function() {
         document.getElements('input[type=range]').each(applyRangeLabels);
         
-        var pollRequest = new Request.JSON({url: "/info", method: "GET"});
+        var pollRequest = new Request.JSON({url: "/info", method: "GET", link: "cancel"});
         pollRequest.addEvent('success', applyJSONInfo);
+        pollRequest.addEvent('success', function(){errorOverlay(false);});
+        pollRequest.addEvent('failure', function(xhr) {
+          if(xhr.status==502) {
+            errorOverlay("The system is down or maybe not connected to the internet");
+          }
+          else {
+            errorOverlay("Error: " + xhr.status + " " + xhr.statusText);
+          }
+        });
         setInterval(function() {
           pollRequest.send();
-        }, 10000);
+        }, 5000);
         pollRequest.send();
       });
     </script>
