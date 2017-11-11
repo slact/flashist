@@ -500,7 +500,6 @@ class Control
     @cava.on_active do
       @idle = false
       @flashist.fade_start 2
-      @wavegen.static_color=false
       @wavegen.stop
       true
     end
