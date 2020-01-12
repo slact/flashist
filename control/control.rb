@@ -25,7 +25,9 @@ require "json"
 require 'reel/rack'
 require "color"
 
-#require "pry"
+require "gst"
+
+require "pry"
 
 opt = {
   config_file: "/etc/flashist/control.conf"
@@ -141,7 +143,7 @@ class SpectrumToRGB
     }
   end
   
-  def spectral_center_of_mass(bars)
+  def spectral_center_of_mass(bars, max_bar_val=3096, volume_db=nil, opt={})
     
     m = 0
     volsum = 0
@@ -150,23 +152,32 @@ class SpectrumToRGB
       m += (i * vv)
       volsum += vv
     end
-    
-    sorted_bars = bars.sort.reverse
-    
-    max_sum = sorted_bars[0...@peaks_measure_count].sum
-    
     m = m.to_f/volsum
     m = m/bars.count
     
     @offset = @offset + @colordrift % 1
-    
-    h = ((m*@colorscale + @offset)*360) % 360
+    h = ((((m || 0)**0.5)*@colorscale + @offset)*360) % 360
     h = 0 if h.nan?
     
     s = 0.8
-    l = max_sum.to_f / (@peaks_measure_count * 4096)
+    
+    if volume_db then
+      if volume_db < -30
+        l=0.0
+      elsif volume_db > 0
+        l=1
+      else
+        l=2**volume_db
+      end
+      l=l**0.3
+    else
+      sorted_bars = bars.sort.reverse
+      max_sum = sorted_bars[0...@peaks_measure_count].sum
+      l = max_sum.to_f / (@peaks_measure_count * max_bar_val)
+    end
     l = l * @amplification
     l = 0.999 if l >= 0.999 # dunno why, but l=1.0 translates to black RGB
+    
     
     #puts [h.to_i, s, l.round(5)].to_s
     
@@ -198,6 +209,138 @@ class SpectrumToRGB
     #puts [rgb.r.round(4), rgb.g.round(4), rgb.b.round(4)].to_s
 
     return rgb
+  end
+end
+
+
+class GstreamerAnalyzer
+  include Celluloid
+  attr_accessor :loop, :src, :level, :pipe, :equalizer
+  attr_accessor :keep_running
+  def initialize(s2rgb, flashy)
+    
+    @fps = 30
+    @frame_interval = 1.0/@fps
+    @framecount = 0
+    
+    @last_frame = Time.now
+    
+    @s2rgb = s2rgb
+    @flashy = flashy
+    @keep_running = true
+    
+    @pipe = Gst::Pipeline.new
+    @loop = GLib::MainLoop.new
+    @src = Gst::ElementFactory.make("pulsesrc", "pulsey")
+    @convert = Gst::ElementFactory.make("audioconvert")
+    @src.client_name = "levelier"
+    @level = Gst::ElementFactory.make("level")
+    @equalizer = Gst::ElementFactory.make("equalizer-3bands")
+    @equalizer.band0=2
+    
+    equalizer_invert = Gst::ElementFactory.make("equalizer-3bands")
+    equalizer_invert.band0=-4
+    
+    @spectrum = Gst::ElementFactory.make("spectrum")
+    @spectrum.bands=250
+    fakesink = Gst::ElementFactory.make "fakesink", "the_fakest_sink"
+    @pipe.add(@src, @convert, @equalizer, @level, equalizer_invert, @spectrum, fakesink)
+    caps = Gst::Caps.from_string("audio/x-raw,channels=1")
+    @src >> @convert
+    @convert.link_filtered(@equalizer, caps)
+    @equalizer >> @level >> equalizer_invert >> @spectrum >> fakesink
+    
+    @pipe.bus.add_watch do |bus, message|
+      if message.type == "element"
+        begin
+        if message.has_name? "level"
+          on_level message.structure.get_value("decay").value
+        elsif message.has_name? "spectrum"
+          vals = message.structure.get_value("magnitude").value
+          vals = vals[0..(vals.count/3).round] #go up to ~8KHz
+          vals.map! do |val|
+            if val<-40
+              0.0
+            elsif val > 0
+              1.0
+            else
+              val = 2**val
+            end
+          end
+          on_spectrum vals
+        end
+        rescue Exception => e
+          binding.pry
+        end
+      end
+      true
+    end
+    @spectrum.interval=33333333
+    @level.interval=33333333
+  end
+  
+  def on_level(lvl)
+    lvl = lvl.first if Array === lvl
+    @val_lvl=lvl
+    send_frame_if_needed
+  end
+  
+  def on_spectrum(spectrum)
+    weight_new_data=0.5
+    if not @val_spectrum
+      @val_spectrum = spectrum
+    else 
+      spectrum.each_with_index do |val, i|
+        @val_spectrum[i] = (@val_spectrum[i] + val*weight_new_data)/(1.0 + weight_new_data)
+      end
+    end
+    send_frame_if_needed
+  end
+  
+  def send_frame_if_needed
+    now = Time.now
+    return if now - @last_frame < @frame_interval or not @val_lvl or not @val_spectrum
+    
+    @last_frame = now
+    
+    rgb = @s2rgb.spectral_center_of_mass(@val_spectrum, 1, @val_lvl)
+    maxidle = @s2rgb.idle_max_level.to_f/255
+    
+    if rgb.r > maxidle || rgb.g > maxidle || rgb.b > maxidle
+      @framecount += 1
+      if !@active then
+        puts "now active..."
+        @active = true
+        @on_active.call if @on_active
+      end
+    end
+    @flashy.send_rgb rgb unless !@active
+  end
+  
+  def run
+    @pipe.play
+    async.idle_timer
+    @loop.run
+  end
+  
+  def on_active &block
+    @on_active = block
+  end
+  
+  def on_idle &block
+    @on_idle = block
+  end
+  
+  def idle_timer
+    while true do
+      Celluloid.sleep 5
+      if @framecount == 0 && @active then
+        puts "now idle..."
+        @active = false
+        @on_idle.call if @on_idle
+      end
+      @framecount = 0
+    end
   end
 end
 
@@ -329,6 +472,7 @@ class ControlServer
           val = req.params[param]
         end
         obj.send"#{param}=", val
+        return val
       end
     end
     
@@ -490,14 +634,16 @@ class Control
     @wavegen = Wavegen.new @flashist
     @idle = true
     
-    @cava = CavaReader.new $conf.cava_fifo, @s2rgb, @flashist
-    @cava.on_idle do
+    @analyzer = GstreamerAnalyzer.new(@s2rgb, @flashist)
+    
+    #@analyzer = CavaReader.new $conf.cava_fifo, @s2rgb, @flashist
+    @analyzer.on_idle do
       @idle = true
       @flashist.fade_start 4
       @wavegen.run
       true
     end
-    @cava.on_active do
+    @analyzer.on_active do
       @idle = false
       @flashist.fade_start 2
       @wavegen.stop
@@ -533,7 +679,7 @@ class Control
   def run
     @server.run
     @wavegen.run
-    @cava.run
+    @analyzer.run
     self.async.ping_timer
     sleep 1
     #drop pidfile
@@ -547,6 +693,12 @@ class Control
         val = params[param].to_f
       when :int
         val = params[param].to_i
+      when :boolean
+        if params[param]=="false" || params[param]=="0" || params[param]=="" || params[param]=="off"
+          val = false
+        else
+          val = true
+        end
       else
         val = params[param]
       end
@@ -564,7 +716,7 @@ class Control
     set_maybe params, @s2rgb, "redblue_shift", :float
     
     if params["static_color_enabled"]
-      set_maybe params, @wavegen, "static_color"
+      set_maybe params, @wavegen, "static_color", :boolean
     else
       set_maybe params, @wavegen, "idle_on", :int
       set_maybe params, @wavegen, "color_cycling_speed", :float
