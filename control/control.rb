@@ -449,6 +449,7 @@ class Wavegen
         rgb = @static_color
       else
         rgb = @color_cycling_speed > 0 ? Color::RGB.new : @current_color
+        rgb = Color::RGB.new unless rgb
         if rgb.frozen?
           rgb = Color::RGB.new(rgb.r, rgb.g, rgb.b)
         end
