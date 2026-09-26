@@ -1,4 +1,4 @@
-#!/usr/bin/ruby
+#!/usr/bin/env ruby
 require 'rubygems'
 
 begin
@@ -13,17 +13,67 @@ end
 require "optparse"
 require 'ruby-conf'
 
-require "celluloid"
-require "celluloid/current"
-require "celluloid/logger"
-require "rawhid"
+require "async"
+require "async/http/endpoint"
+require "falcon/server"
+require "ffi"
 require "erb"
 
 require "redis"
 require "json"
 
-require 'reel/rack'
+require "rack"
 require "color"
+require "io/nonblock"
+
+module RawHIDDriver
+  extend FFI::Library
+  ffi_lib "hidapi-libusb"
+  attach_function :hid_init, [], :int
+  attach_function :hid_exit, [], :int
+  attach_function :hid_open, [:ushort, :ushort, :pointer], :pointer
+  attach_function :hid_write, [:pointer, :pointer, :size_t], :int
+  attach_function :hid_close, [:pointer], :void
+end
+
+class RawHID
+  class RawHIDError < StandardError
+    attr_reader :code
+
+    def initialize(message, code = nil)
+      @code = code
+      super(message)
+    end
+  end
+
+  def initialize(vendor_id, product_id)
+    result = RawHIDDriver.hid_init
+    raise RawHIDError.new("Unable to initialize HID library", result) if result < 0
+
+    @device = RawHIDDriver.hid_open(vendor_id, product_id, FFI::Pointer::NULL)
+    return unless @device.null?
+
+    RawHIDDriver.hid_exit
+    raise RawHIDError.new("Unable to open device", -1)
+  end
+
+  def write(data, _timeout = 0)
+    data = data.map(&:chr).join if data.is_a?(Array)
+    buffer = FFI::MemoryPointer.from_string(data)
+    result = RawHIDDriver.hid_write(@device, buffer, data.bytesize)
+    raise RawHIDError.new("Failed sending data", result) if result <= 0
+
+    result
+  end
+
+  def close
+    return unless @device
+
+    RawHIDDriver.hid_close(@device)
+    RawHIDDriver.hid_exit
+    @device = nil
+  end
+end
 
 #require "pry"
 
@@ -40,7 +90,6 @@ load opt[:config_file]
 $conf = RubyConf.flashist
 
 class Flashist #don't punch me bro
-  include Celluloid
   
   def initialize
     init_device
@@ -83,7 +132,7 @@ class Flashist #don't punch me bro
   private :send_raw_bytes
   
   def send_raw(*args)
-    self.async.send_raw_bytes(*args)
+    Async { send_raw_bytes(*args) }
   end
   def send_rgb(rgb)
     if @fade_start
@@ -106,7 +155,7 @@ class Flashist #don't punch me bro
       b = rgb.b*255.to_i
     end
     @last_rgb_frame = rgb
-    self.async.send_raw(42, r.to_i, g.to_i, b.to_i)
+    send_raw(42, r.to_i, g.to_i, b.to_i)
   end
   def send_hello
     send_raw ">"
@@ -203,33 +252,7 @@ end
 
 
 class CavaReader
-  include Celluloid
   attr_accessor :s2rgb, :keep_running, :fifo
-  
-  class BlockingReadline
-    include Celluloid
-    def initialize(parent)
-      @parent = parent
-    end
-    
-    def run
-      while true do
-        fifo = @parent.fifo
-        if fifo.nil?
-          Celluloid.sleep 1
-          @parent.open_fifo
-        else
-          begin
-            l = fifo.readline
-            @parent.receive_line l
-          rescue Exception => e
-            #don't mind it, really
-            Celluloid.sleep 0.1
-          end
-        end
-      end
-    end
-  end
   
   def receive_line(l)
     bars = l.strip.split " "
@@ -258,7 +281,6 @@ class CavaReader
     open_fifo
     @active = false
     @framecount = 0
-    @reader = BlockingReadline.new(self)
   end
   
   def on_active &block
@@ -275,7 +297,7 @@ class CavaReader
   
   def idle_timer
     while true do
-      Celluloid.sleep 5
+      sleep 5
       if @framecount == 0 && @active then
         puts "now idle..."
         @active = false
@@ -284,10 +306,34 @@ class CavaReader
       @framecount = 0
     end
   end
+
+  def read_fifo
+    buffer = +""
+    while @keep_running
+      fifo = @fifo
+      if fifo.nil?
+        sleep 1
+        open_fifo
+        next
+      end
+
+      begin
+        buffer << fifo.read_nonblock(4096)
+        while (newline = buffer.index("\n"))
+          receive_line(buffer.slice!(0, newline + 1))
+        end
+      rescue IO::WaitReadable
+        fifo.wait_readable
+      rescue EOFError
+        sleep 0.1
+      end
+    end
+  end
   
   def open_fifo
     begin
       @fifo = File.open(@fifo_path, 'r+')
+      @fifo.nonblock = true
     rescue Errno::ENOENT => e
       puts "cava fifo: can't open #{@fifo_path}"
       puts "make the file"
@@ -297,48 +343,24 @@ class CavaReader
   end
   
   def run
-    @reader.async.run
-    async.idle_timer
-  end  
+    Async { read_fifo }
+    Async { idle_timer }
+  end
 end
-
 class ControlServer
   attr_accessor :app
 
   def initialize(control)
-    @opt = {}
-    @opt[:Port] = $conf.server_port || 8080
-    
+    @opt = {Port: $conf.server_port || 8080}
     @control = control
-    
     @index = ERB.new(File.read File.join(__dir__, 'web', 'index.erb'))
     @mootools = File.read File.join(__dir__, 'web', 'moo.js')
     @jscolor = File.read File.join(__dir__, 'web', 'jscolor.min.js')
-    if block_given?
-      opt[:callback]=Proc.new
-    end
-    
-    def set_maybe(req, obj, param, kind = nil)
-      if req.params[param]
-        case kind
-        when :float
-          val = req.params[param].to_f
-        when :int
-          val = req.params[param].to_i
-        else
-          val = req.params[param]
-        end
-        obj.send"#{param}=", val
-      end
-    end
-    
+
     @app = proc do |env|
       resp = []
       headers = {}
       code = 200
-      body = env["rack.input"].read
-      chunked = false
-      
       req = Rack::Request.new(env)
       if req.request_method == "POST"
         saved_params = @control.set_runtime_params req.params
@@ -371,37 +393,29 @@ class ControlServer
         end
       end
 
-      headers["Content-Length"]=resp.join("").length.to_s unless chunked
+      response_body = resp.join
+      headers["Content-Length"] = response_body.bytesize.to_s
 
-      [ code, headers, resp ]
+      [code, headers, [response_body]]
     end
 
-    @opt = Rack::Handler::Reel::DEFAULT_OPTIONS.merge(@opt)
-    @app = Rack::CommonLogger.new(@app, STDOUT) unless @opt[:quiet]
+    @app = Rack::CommonLogger.new(@app, STDOUT)
   end
 
   def run
-    ENV['RACK_ENV'] = @opt[:environment].to_s if @opt[:environment]
-    @supervisor = Reel::Rack::Server.supervise(as: :reel_rack_server, args: [@app, @opt])
-    
-    
-    #if __FILE__ == $PROGRAM_NAME
-    #  begin
-    #    sleep
-    #  rescue Interrupt
-    #    Celluloid.logger.info "Interrupt received... shutting down" unless @opt[:quiet]
-    #    @supervisor.terminate
-    #  end
-    #end
+    endpoint = Async::HTTP::Endpoint.parse("http://0.0.0.0:#{@opt[:Port]}")
+    app = Falcon::Server.middleware(@app, cache: false)
+    @server = Falcon::Server.new(app, endpoint)
+    @server_task = @server.run
   end
-  
+
   def stop
-    @supervisor.terminate
+    @server_task&.stop
   end
 end
 
+
 class Wavegen
-  include Celluloid
   attr_accessor :color_cycling_speed, :brightness_cycling_speed, :brightness_cycling_min, :brightness_cycling_max
   def initialize(flashist)
     @flashist = flashist
@@ -444,7 +458,7 @@ class Wavegen
   
   def generate
     while @running do
-      Celluloid.sleep(1.0/30)
+      sleep(1.0/30)
       if @static_color
         rgb = @static_color
       else
@@ -475,7 +489,7 @@ class Wavegen
   
   def run(rgb = nil)
     @running = true
-    self.async.generate
+    @task = Async { generate } unless @task&.alive?
   end
   
   def stop
@@ -484,7 +498,6 @@ class Wavegen
 end
 
 class Control
-  include Celluloid
   def initialize
     @flashist = Flashist.new
     @s2rgb = SpectrumToRGB.new
@@ -520,7 +533,7 @@ class Control
   
   def ping_timer
     while true do
-      Celluloid.sleep(2)
+      sleep(2)
       if @idle then
         #ping device
         #puts "ping"
@@ -532,13 +545,15 @@ class Control
   private :ping_timer
   
   def run
-    @server.run
-    @wavegen.run
-    @cava.run
-    self.async.ping_timer
-    sleep 1
-    #drop pidfile
-    File.write($conf.pidfile, Process.pid)
+    Async do |task|
+      @server.run
+      @wavegen.run
+      @cava.run
+      task.async { ping_timer }
+      sleep 1
+      File.write($conf.pidfile, Process.pid)
+      task.children.each(&:wait)
+    end
   end
   
   def set_maybe(params, obj, param, kind = nil)
@@ -596,4 +611,3 @@ end
 control = Control.new
 control.run
 
-sleep

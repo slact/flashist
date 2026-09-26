@@ -1,10 +1,14 @@
 #!/usr/bin/ruby
 source 'https://rubygems.org'
-gem 'celluloid'
+ruby ">= 3.4"
+gem "async", "~> 2.36"
+gem "color"
+gem "falcon", "~> 0.54"
+gem "json", "~> 2.0"
+gem "rack", "~> 3.1"
+gem "ffi", "~> 1.17"
+gem "redis", "~> 5.0"
 gem "ruby-conf"
-gem "redis"
-gem 'rawhid'
-
 #gem "HDRHistogram"
 
 #gem 'hidapi'
@@ -12,8 +16,3 @@ gem 'rawhid'
 #gem 'hid_api', :git => "https://github.com/slact/ruby_hid_api"
 #gem "ruby_hidapi", :path => "/home/leop/sandbox/ruby-hidapi"
 
-gem 'reel'
-gem 'reel-rack', :git => "https://github.com/slact/reel-rack.git"
-gem 'color'
-
-gem "pry"
