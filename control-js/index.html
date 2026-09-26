@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flashist</title>
+  <style>
+    body { font: 16px system-ui, sans-serif; margin: 2rem auto; max-width: 56rem; padding: 0 1rem; }
+    main { border: 1px solid #ccc; border-radius: 1rem; padding: 1.5rem; }
+    button { font: inherit; margin: 0.25rem 0.5rem 0.25rem 0; padding: 0.6rem 1rem; }
+    [role="status"] { min-height: 1.5em; }
+    .effects { margin-top: 1.5rem; }
+    .effect { border-top: 1px solid #ddd; padding: 0.75rem 0; }
+    .effect:first-child { border-top: 0; }
+    .effect-header { align-items: center; display: flex; justify-content: space-between; }
+    details { flex: 1; }
+    summary { cursor: pointer; }
+    .option-grid { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); padding: 1rem 0; }
+    .option-grid label { display: grid; gap: 0.25rem; }
+    .option-grid input, .option-grid select { font: inherit; min-width: 0; padding: 0.4rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Flashist</h1>
+    <p>Build with npm or pnpm, then open <code>dist/index.html</code> directly in Chrome or Edge. No backend or device proxy is used. Stop the Flashist service first because it owns the USB interface.</p>
+    <button id="connect" type="button">Connect device</button>
+    <button id="disconnect" type="button" disabled>Disconnect</button>
+    <p id="status" role="status">Checking WebHID support…</p>
+    <p id="keepalive" role="status">Keepalive inactive</p>
+    <section class="effects">
+      <h2>Game-show effects</h2>
+      <p>Thinking difficulty runs from 1 (easy, green and relaxed) to 10 (hard, red and urgent).</p>
+      <div id="game-show-effects"></div>
+      <button id="stop" type="button" disabled>Stop effects</button>
+    </section>
+    <p id="effect-status" role="status">Effects idle</p>
+  </main>
+  <script type="module" src="/src/demo.js"></script>
+</body>
+</html>
